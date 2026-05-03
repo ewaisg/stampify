@@ -107,7 +107,7 @@ export function AIStampGenerator({ open, onOpenChange }: AIStampGeneratorProps) 
             { role: "system" as const, content: SYSTEM_PROMPT },
             { role: "user" as const, content: prompt },
           ],
-          temperature: 0.7,
+          // Do not send temperature — some models (Azure o-series) only accept the default
           maxTokens: 1024,
           responseFormat: "json",
         }),

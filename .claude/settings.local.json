@@ -17,7 +17,12 @@
       "Bash(git config *)",
       "Bash(npx next *)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:9002/login)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(node *)",
+      "Bash(npx kill-port *)",
+      "Bash(curl -s http://localhost:9002/login)",
+      "Bash(curl -s http://localhost:9002/_next/static/chunks/src_13xzt~-._.js)",
+      "Bash(npx firebase *)"
     ]
   }
 }

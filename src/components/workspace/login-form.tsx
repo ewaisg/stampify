@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -34,6 +35,7 @@ function getFirebaseErrorMessage(code: string): string {
 
 export default function LoginForm() {
   const { login, resetPassword } = useAuth();
+  const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
   const [resetSent, setResetSent] = useState(false);
   const [resettingPassword, setResettingPassword] = useState(false);
@@ -57,7 +59,9 @@ export default function LoginForm() {
 
     try {
       await login(data.email, data.password);
+      router.push("/");
     } catch (error) {
+      console.error("[Login] Error:", error);
       if (error instanceof FirebaseError) {
         setFormError(getFirebaseErrorMessage(error.code));
       } else {

@@ -65,11 +65,15 @@ export default function WorkspacePage() {
 
   const { user } = useAuth();
   const [pdfData, setPdfData] = useState<ArrayBuffer | null>(null);
+  const [pdfFetchError, setPdfFetchError] = useState<string | null>(null);
+  const [pdfFetching, setPdfFetching] = useState(false);
   const loadingFileIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!activeFile) {
       setPdfData(null);
+      setPdfFetchError(null);
+      setPdfFetching(false);
       loadingFileIdRef.current = null;
       return;
     }
@@ -78,12 +82,15 @@ export default function WorkspacePage() {
     const local = getFileBuffer(activeFile.id);
     if (local) {
       setPdfData(local);
+      setPdfFetchError(null);
+      setPdfFetching(false);
       return;
     }
 
-    // No local buffer and no storage URL — nothing we can do yet
-    if (!activeFile.storageUrl || !user) {
+    if (!user) {
       setPdfData(null);
+      setPdfFetchError("Not authenticated.");
+      setPdfFetching(false);
       return;
     }
 
@@ -91,19 +98,23 @@ export default function WorkspacePage() {
     if (loadingFileIdRef.current === activeFile.id) return;
     loadingFileIdRef.current = activeFile.id;
     setPdfData(null);
+    setPdfFetchError(null);
+    setPdfFetching(true);
 
-    // Use Firebase SDK getBlob() — handles auth tokens and avoids CORS
     downloadPdfAsBuffer(user.uid, activeFile.id)
       .then((buf) => {
         addFileBuffer(activeFile.id, buf);
         if (loadingFileIdRef.current === activeFile.id) {
           setPdfData(buf);
+          setPdfFetching(false);
         }
       })
       .catch((err) => {
         console.error("[WorkspacePage] Failed to download PDF from Storage:", err);
         if (loadingFileIdRef.current === activeFile.id) {
           loadingFileIdRef.current = null;
+          setPdfFetching(false);
+          setPdfFetchError("Failed to load PDF from cloud storage. Please try re-uploading the file.");
         }
       });
   }, [activeFile, user]);
@@ -167,7 +178,13 @@ export default function WorkspacePage() {
         {/* Canvas area */}
         <div className="flex flex-1 items-center justify-center overflow-auto bg-muted/10">
           {activeFile ? (
-            <PdfCanvas pdfData={pdfData} />
+            pdfFetchError ? (
+              <div className="flex flex-col items-center gap-3 text-center">
+                <p className="text-sm text-destructive">{pdfFetchError}</p>
+              </div>
+            ) : (
+              <PdfCanvas pdfData={pdfData} fetching={pdfFetching} />
+            )
           ) : (
             <>
               <div className="flex flex-col items-center gap-3 text-center">

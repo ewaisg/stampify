@@ -457,12 +457,8 @@ export function FilePanel({ className }: { className?: string }) {
           variant="ghost"
           size="sm"
           onClick={handleUploadClick}
-          disabled={!hasStamps || loading}
-          title={
-            hasStamps
-              ? "Upload PDF files"
-              : "Add stamps before uploading PDFs"
-          }
+          disabled={loading}
+          title="Upload PDF files"
         >
           {loading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -610,17 +606,13 @@ export function FilePanel({ className }: { className?: string }) {
           <div>
             <p className="text-sm font-medium">No files yet</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {hasStamps
-                ? "Upload PDF files to start stamping."
-                : "Create stamps first, then upload PDFs."}
+              Upload PDF files to start stamping.
             </p>
           </div>
-          {hasStamps && (
-            <Button variant="outline" size="sm" onClick={handleUploadClick}>
-              <Upload className="h-4 w-4" />
-              Upload PDFs
-            </Button>
-          )}
+          <Button variant="outline" size="sm" onClick={handleUploadClick}>
+            <Upload className="h-4 w-4" />
+            Upload PDFs
+          </Button>
         </div>
       )}
     </div>

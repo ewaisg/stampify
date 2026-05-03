@@ -236,13 +236,14 @@ function hitTestStamp(
 
 interface PdfCanvasProps {
   pdfData: ArrayBuffer | null;
+  fetching?: boolean;
 }
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export function PdfCanvas({ pdfData }: PdfCanvasProps) {
+export function PdfCanvas({ pdfData, fetching = false }: PdfCanvasProps) {
   // Stores
   const { currentPage, setCurrentPage, zoom, setZoom, setTotalPages, selectedStampId, setSelectedStampId } = useUIStore();
   const { activeFileId } = useFilesStore();
@@ -661,30 +662,6 @@ export function PdfCanvas({ pdfData }: PdfCanvasProps) {
   // Render
   // -----------------------------------------------------------------------
 
-  if (!pdfData) {
-    return (
-      <div className="flex flex-1 items-center justify-center text-muted-foreground">
-        <p>Loading PDF...</p>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="flex flex-1 items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-1 items-center justify-center text-destructive">
-        <p>{error}</p>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Toolbar */}
@@ -768,47 +745,61 @@ export function PdfCanvas({ pdfData }: PdfCanvasProps) {
         ref={containerRef}
         className="flex flex-1 items-start justify-center overflow-auto bg-muted/30 p-8"
       >
-        <div
-          className={cn(
-            "relative shadow-lg",
-            (dragging || resizing >= 0) && "cursor-grabbing",
-          )}
-          style={{
-            width: `${pageSize.width * zoom}px`,
-            height: `${pageSize.height * zoom}px`,
-          }}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
-        >
-          {/* PDF render canvas */}
-          <canvas
-            ref={pdfCanvasRef}
-            className="absolute inset-0"
-            style={{
-              width: `${pageSize.width * zoom}px`,
-              height: `${pageSize.height * zoom}px`,
-            }}
-          />
+        {(fetching || loading) && (
+          <div className="flex flex-1 items-center justify-center self-center">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        )}
 
-          {/* Stamp overlay canvas */}
-          <canvas
-            ref={stampCanvasRef}
-            className="absolute inset-0"
+        {!fetching && !loading && error && (
+          <div className="flex flex-1 items-center justify-center self-center">
+            <p className="text-sm text-destructive">{error}</p>
+          </div>
+        )}
+
+        {!fetching && !loading && !error && pdfData && (
+          <div
+            className={cn(
+              "relative shadow-lg",
+              (dragging || resizing >= 0) && "cursor-grabbing",
+            )}
             style={{
               width: `${pageSize.width * zoom}px`,
               height: `${pageSize.height * zoom}px`,
-              cursor: dragging
-                ? "grabbing"
-                : resizing >= 0
-                  ? "nwse-resize"
-                  : "default",
             }}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-          />
-        </div>
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+          >
+            {/* PDF render canvas */}
+            <canvas
+              ref={pdfCanvasRef}
+              className="absolute inset-0"
+              style={{
+                width: `${pageSize.width * zoom}px`,
+                height: `${pageSize.height * zoom}px`,
+              }}
+            />
+
+            {/* Stamp overlay canvas */}
+            <canvas
+              ref={stampCanvasRef}
+              className="absolute inset-0"
+              style={{
+                width: `${pageSize.width * zoom}px`,
+                height: `${pageSize.height * zoom}px`,
+                cursor: dragging
+                  ? "grabbing"
+                  : resizing >= 0
+                    ? "nwse-resize"
+                    : "default",
+              }}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

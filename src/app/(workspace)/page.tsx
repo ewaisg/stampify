@@ -19,8 +19,10 @@ import { useFirestoreSync } from "@/hooks/use-firestore-sync";
 import { useAppliedStampsSync } from "@/hooks/use-applied-stamps-sync";
 import { useAppliedStampActions } from "@/hooks/use-applied-stamp-actions";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
-import { getFileBuffer } from "@/lib/pdf/file-manager";
-import { useCallback, useMemo } from "react";
+import { getFileBuffer, addFileBuffer } from "@/lib/pdf/file-manager";
+import { downloadPdfAsBuffer } from "@/lib/firebase/storage-service";
+import { useAuth } from "@/contexts/AuthContext";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export default function WorkspacePage() {
   useFirestoreSync();
@@ -61,15 +63,50 @@ export default function WorkspacePage() {
     deselectStamp,
   });
 
-  // Provide pdfjs with either an in-memory buffer (just-uploaded) or a URL
-  // (loaded from Firestore on page refresh). pdfjs worker handles both natively.
-  const pdfSource = useMemo(() => {
-    if (!activeFile) return null;
-    const buf = getFileBuffer(activeFile.id);
-    if (buf) return { type: "buffer" as const, data: buf };
-    if (activeFile.storageUrl) return { type: "url" as const, url: activeFile.storageUrl };
-    return null;
-  }, [activeFile]);
+  const { user } = useAuth();
+  const [pdfData, setPdfData] = useState<ArrayBuffer | null>(null);
+  const loadingFileIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!activeFile) {
+      setPdfData(null);
+      loadingFileIdRef.current = null;
+      return;
+    }
+
+    // Fast path — buffer already in memory (just uploaded this session)
+    const local = getFileBuffer(activeFile.id);
+    if (local) {
+      setPdfData(local);
+      return;
+    }
+
+    // No local buffer and no storage URL — nothing we can do yet
+    if (!activeFile.storageUrl || !user) {
+      setPdfData(null);
+      return;
+    }
+
+    // Avoid duplicate downloads for the same file
+    if (loadingFileIdRef.current === activeFile.id) return;
+    loadingFileIdRef.current = activeFile.id;
+    setPdfData(null);
+
+    // Use Firebase SDK getBlob() — handles auth tokens and avoids CORS
+    downloadPdfAsBuffer(user.uid, activeFile.id)
+      .then((buf) => {
+        addFileBuffer(activeFile.id, buf);
+        if (loadingFileIdRef.current === activeFile.id) {
+          setPdfData(buf);
+        }
+      })
+      .catch((err) => {
+        console.error("[WorkspacePage] Failed to download PDF from Storage:", err);
+        if (loadingFileIdRef.current === activeFile.id) {
+          loadingFileIdRef.current = null;
+        }
+      });
+  }, [activeFile, user]);
 
   return (
     <div className="relative flex h-full">
@@ -130,7 +167,7 @@ export default function WorkspacePage() {
         {/* Canvas area */}
         <div className="flex flex-1 items-center justify-center overflow-auto bg-muted/10">
           {activeFile ? (
-            <PdfCanvas pdfSource={pdfSource} />
+            <PdfCanvas pdfData={pdfData} />
           ) : (
             <>
               <div className="flex flex-col items-center gap-3 text-center">

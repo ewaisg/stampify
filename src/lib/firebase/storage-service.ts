@@ -4,6 +4,7 @@ import {
   ref,
   uploadBytes,
   getDownloadURL,
+  getBlob,
   deleteObject,
   listAll,
 } from "firebase/storage";
@@ -128,4 +129,21 @@ export async function deletePdfFile(
   const storage = getFirebaseStorage();
   const fileRef = ref(storage, `users/${uid}/files/${fileId}.pdf`);
   await deleteObject(fileRef);
+}
+
+/**
+ * Download a PDF from Firebase Storage as an ArrayBuffer.
+ * Uses getBlob() which includes Firebase auth tokens — avoids CORS issues
+ * that occur when fetching the raw download URL from a browser context.
+ *
+ * Path: `users/{uid}/files/{fileId}.pdf`
+ */
+export async function downloadPdfAsBuffer(
+  uid: string,
+  fileId: string,
+): Promise<ArrayBuffer> {
+  const storage = getFirebaseStorage();
+  const fileRef = ref(storage, `users/${uid}/files/${fileId}.pdf`);
+  const blob = await getBlob(fileRef);
+  return blob.arrayBuffer();
 }

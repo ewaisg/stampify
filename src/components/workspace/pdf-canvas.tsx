@@ -25,6 +25,7 @@ import { useUIStore } from "@/stores/ui";
 import { useAppliedStampsStore, selectStampsForPage } from "@/stores/applied-stamps";
 import { useStampsStore } from "@/stores/stamps";
 import { useFilesStore } from "@/stores/files";
+import { useAppliedStampActions } from "@/hooks/use-applied-stamp-actions";
 import { MIN_ZOOM, MAX_ZOOM, ZOOM_INCREMENT, MIN_STAMP_SIZE } from "@/config";
 import type { AppliedStamp, Stamp } from "@/types/stampify";
 
@@ -247,10 +248,14 @@ export function PdfCanvas({ pdfData }: PdfCanvasProps) {
   const { activeFileId } = useFilesStore();
   const stamps = useStampsStore((s) => s.stamps);
   const appliedStamps = useAppliedStampsStore((s) => s.appliedStamps);
-  const addAppliedStamp = useAppliedStampsStore((s) => s.addAppliedStamp);
-  const updateAppliedStamp = useAppliedStampsStore((s) => s.updateAppliedStamp);
-  const deleteAppliedStamp = useAppliedStampsStore((s) => s.deleteAppliedStamp);
-  const duplicateToAllPages = useAppliedStampsStore((s) => s.duplicateToAllPages);
+
+  // Firestore-persisted actions
+  const {
+    addStamp: addAppliedStamp,
+    updateStamp: updateAppliedStamp,
+    deleteStamp: deleteAppliedStamp,
+    duplicateToAll: duplicateToAllPages,
+  } = useAppliedStampActions();
 
   // PDF state
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);

@@ -45,6 +45,8 @@ interface AppliedStampsActions {
     baseStamp: AppliedStamp,
     totalPages: number,
   ) => void;
+  /** Replace all applied stamps for a file from a flat array (used by Firestore sync). */
+  setFileStamps: (fileId: string, stamps: AppliedStamp[]) => void;
   clearFile: (fileId: string) => void;
   reset: () => void;
 }
@@ -214,6 +216,24 @@ export const useAppliedStampsStore = create<
         next.get(fileId)!.set(page, [...arr]);
       }
 
+      return { appliedStamps: next };
+    }),
+
+  setFileStamps: (fileId, stamps) =>
+    set((state) => {
+      const next = cloneFileMap(state.appliedStamps);
+      const pageMap = new Map<number, AppliedStamp[]>();
+
+      for (const stamp of stamps) {
+        let arr = pageMap.get(stamp.page);
+        if (!arr) {
+          arr = [];
+          pageMap.set(stamp.page, arr);
+        }
+        arr.push(stamp);
+      }
+
+      next.set(fileId, pageMap);
       return { appliedStamps: next };
     }),
 

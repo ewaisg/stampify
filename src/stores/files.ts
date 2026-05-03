@@ -15,6 +15,7 @@ interface FilesState {
 interface FilesActions {
   setFiles: (files: FileMetadata[]) => void;
   addFiles: (files: FileMetadata[]) => void;
+  updateFile: (id: string, patch: Partial<FileMetadata>) => void;
   removeFile: (id: string) => void;
   removeFiles: (ids: string[]) => void;
   setActiveFile: (id: string | null) => void;
@@ -47,6 +48,11 @@ export const useFilesStore = create<FilesState & FilesActions>()((set) => ({
 
   addFiles: (newFiles) =>
     set((state) => ({ files: [...state.files, ...newFiles] })),
+
+  updateFile: (id, patch) =>
+    set((state) => ({
+      files: state.files.map((f) => (f.id === id ? { ...f, ...patch } : f)),
+    })),
 
   removeFile: (id) =>
     set((state) => {

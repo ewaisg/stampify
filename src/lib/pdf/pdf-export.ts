@@ -9,6 +9,26 @@ import type { AppliedStamp, Stamp } from "@/types/stampify";
 import { EXPORT_PIXEL_RATIO } from "@/config";
 
 // ---------------------------------------------------------------------------
+// fetchPdfBytes — Download a PDF from a remote URL (e.g. Firebase Storage)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch a PDF file from a URL and return its bytes as an ArrayBuffer.
+ *
+ * Useful for re-hydrating a file buffer when the in-memory cache has been
+ * evicted but a Firebase Storage URL is available.
+ */
+export async function fetchPdfBytes(url: string): Promise<ArrayBuffer> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch PDF: ${response.status} ${response.statusText}`,
+    );
+  }
+  return response.arrayBuffer();
+}
+
+// ---------------------------------------------------------------------------
 // stampPdf — Embed applied stamps into a single PDF and return the bytes
 // ---------------------------------------------------------------------------
 

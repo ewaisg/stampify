@@ -15,8 +15,9 @@ import { FilePanel } from "@/components/workspace/file-panel";
 import { PdfCanvas } from "@/components/workspace/pdf-canvas";
 import { StampPanel } from "@/components/stamps/stamp-panel";
 import { useFirestoreSync } from "@/hooks/use-firestore-sync";
+import { useAppliedStampsSync } from "@/hooks/use-applied-stamps-sync";
+import { useAppliedStampActions } from "@/hooks/use-applied-stamp-actions";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
-import { useAppliedStampsStore } from "@/stores/applied-stamps";
 import { getFileBuffer } from "@/lib/pdf/file-manager";
 import { useCallback, useMemo } from "react";
 
@@ -33,7 +34,10 @@ export default function WorkspacePage() {
   const setSelectedStampId = useUIStore((s) => s.setSelectedStampId);
   const activeFile = useFilesStore(selectActiveFile);
   const activeFileId = useFilesStore((s) => s.activeFileId);
-  const deleteAppliedStamp = useAppliedStampsStore((s) => s.deleteAppliedStamp);
+
+  // Applied stamps Firestore sync & actions
+  useAppliedStampsSync(activeFileId);
+  const { deleteStamp: deleteAppliedStamp } = useAppliedStampActions();
 
   const fileId = activeFileId ?? "";
 

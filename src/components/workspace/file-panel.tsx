@@ -6,9 +6,8 @@ import {
   FileText,
   Download,
   Trash2,
-  CheckSquare,
-  Square,
   Loader2,
+  CloudUpload,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -20,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { useFilesStore, selectSelectedFiles } from "@/stores/files";
 import { useAppliedStampsStore } from "@/stores/applied-stamps";
 import { useStampsStore } from "@/stores/stamps";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
 import { MAX_FILE_SIZE_MB } from "@/config";
 import {
@@ -27,7 +27,13 @@ import {
   getFileBuffer,
   removeFileBuffer,
 } from "@/lib/pdf/file-manager";
-import { downloadStampedPdfs } from "@/lib/pdf/pdf-export";
+import { downloadStampedPdfs, fetchPdfBytes } from "@/lib/pdf/pdf-export";
+import { uploadPdfFile, deletePdfFile } from "@/lib/firebase/storage-service";
+import {
+  saveFileMetadata,
+  deleteFileMetadata,
+} from "@/lib/firebase/files-service";
+import { deleteAllAppliedStampsForFile } from "@/lib/firebase/applied-stamps-service";
 import type { FileMetadata } from "@/types/stampify";
 
 // ---------------------------------------------------------------------------
@@ -59,6 +65,9 @@ function countStampsForFile(
 // ---------------------------------------------------------------------------
 
 export function FilePanel({ className }: { className?: string }) {
+  // Auth
+  const { user } = useAuth();
+
   // Stores
   const {
     files,
@@ -66,6 +75,7 @@ export function FilePanel({ className }: { className?: string }) {
     selectedFileIds,
     loading,
     addFiles,
+    updateFile,
     removeFiles,
     setActiveFile,
     toggleFileSelection,
@@ -92,6 +102,11 @@ export function FilePanel({ className }: { className?: string }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [downloading, setDownloading] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  /** Track which files are currently being uploaded to Storage. */
+  const [uploadingFileIds, setUploadingFileIds] = useState<Set<string>>(
+    new Set(),
+  );
 
   // -----------------------------------------------------------------------
   // File upload
@@ -110,6 +125,11 @@ export function FilePanel({ className }: { className?: string }) {
 
       const newFileMetas: FileMetadata[] = [];
       const errors: string[] = [];
+      /** Raw File objects we need for uploading to Storage (keyed by fileId). */
+      const rawFileMap = new Map<string, File>();
+
+      // Duplicate detection — collect names already present in the store.
+      const existingNames = new Set(files.map((f) => f.name));
 
       for (let i = 0; i < inputFiles.length; i++) {
         const file = inputFiles[i];
@@ -126,14 +146,20 @@ export function FilePanel({ className }: { className?: string }) {
           continue;
         }
 
+        // Duplicate check
+        if (existingNames.has(file.name)) {
+          errors.push(`${file.name}: A file with this name already exists.`);
+          continue;
+        }
+
         try {
           const buffer = await file.arrayBuffer();
           const fileId = crypto.randomUUID();
 
-          // Store the buffer in the in-memory file manager
+          // Store the buffer in the in-memory file manager (immediate use)
           addFileBuffer(fileId, buffer);
 
-          // Attempt to read page count using pdfjs-dist
+          // Count pages using pdfjs-dist
           let pageCount = 0;
           try {
             const pdfjsLib = await import("pdfjs-dist");
@@ -145,16 +171,21 @@ export function FilePanel({ className }: { className?: string }) {
             pageCount = 0;
           }
 
-          newFileMetas.push({
+          const meta: FileMetadata = {
             id: fileId,
             name: file.name,
             size: file.size,
             pageCount,
-            storageUrl: "", // No remote URL yet — in-memory only
+            storageUrl: "", // Will be populated after Storage upload
             uploadedAt: new Date(),
-            userId: "", // Will be set when Firebase auth is integrated
-          });
-        } catch (err) {
+            userId: user?.uid ?? "",
+          };
+
+          newFileMetas.push(meta);
+          rawFileMap.set(fileId, file);
+          // Prevent duplicates within the same batch
+          existingNames.add(file.name);
+        } catch {
           errors.push(`${file.name}: Failed to read file.`);
         }
       }
@@ -168,9 +199,66 @@ export function FilePanel({ className }: { className?: string }) {
         }
 
         toast({
-          title: "Files uploaded",
-          description: `${newFileMetas.length} file(s) added successfully.`,
+          title: "Files added",
+          description: `${newFileMetas.length} file(s) added. Uploading to cloud...`,
         });
+
+        // ---- Fire-and-forget: persist to Firebase ----
+        const uploadIds = new Set(newFileMetas.map((m) => m.id));
+        setUploadingFileIds((prev) => new Set([...prev, ...uploadIds]));
+
+        // Process each file in parallel
+        for (const meta of newFileMetas) {
+          const rawFile = rawFileMap.get(meta.id);
+          if (!rawFile || !user) continue;
+
+          (async () => {
+            try {
+              // 1. Upload PDF to Storage
+              const storageUrl = await uploadPdfFile(
+                user.uid,
+                meta.id,
+                rawFile,
+              );
+
+              // 2. Update local store with the Storage URL
+              updateFile(meta.id, { storageUrl });
+
+              // 3. Save metadata (with URL) to Firestore
+              await saveFileMetadata(user.uid, {
+                ...meta,
+                storageUrl,
+              });
+            } catch (err) {
+              console.error(
+                `[FilePanel] Cloud upload failed for "${meta.name}":`,
+                err,
+              );
+
+              // Still save metadata to Firestore even if Storage fails
+              // so the file record persists; the user can retry later.
+              try {
+                if (user) {
+                  await saveFileMetadata(user.uid, meta);
+                }
+              } catch {
+                // Firestore save also failed — nothing more we can do
+              }
+
+              toast({
+                title: "Cloud upload failed",
+                description: `"${meta.name}" could not be uploaded to cloud storage. The file is available locally for this session. Try re-uploading later.`,
+                variant: "destructive",
+              });
+            } finally {
+              setUploadingFileIds((prev) => {
+                const next = new Set(prev);
+                next.delete(meta.id);
+                return next;
+              });
+            }
+          })();
+        }
       }
 
       if (errors.length > 0) {
@@ -188,7 +276,7 @@ export function FilePanel({ className }: { className?: string }) {
         fileInputRef.current.value = "";
       }
     },
-    [addFiles, activeFileId, setActiveFile, setLoading],
+    [addFiles, updateFile, activeFileId, setActiveFile, setLoading, files, user],
   );
 
   // -----------------------------------------------------------------------
@@ -201,14 +289,38 @@ export function FilePanel({ className }: { className?: string }) {
 
     try {
       const filesToExport: { name: string; bytes: ArrayBuffer }[] = [];
-      const allApplied = new Map<string, Map<number, import("@/types/stampify").AppliedStamp[]>>();
+      const allApplied = new Map<
+        string,
+        Map<number, import("@/types/stampify").AppliedStamp[]>
+      >();
 
       for (const fileMeta of selectedFiles) {
-        const buffer = getFileBuffer(fileMeta.id);
+        // Try local buffer first, fall back to fetching from Storage URL
+        let buffer = getFileBuffer(fileMeta.id);
+
+        if (!buffer && fileMeta.storageUrl) {
+          try {
+            buffer = await fetchPdfBytes(fileMeta.storageUrl);
+            // Cache it locally for subsequent operations
+            addFileBuffer(fileMeta.id, buffer);
+          } catch (err) {
+            console.error(
+              `[FilePanel] Failed to fetch "${fileMeta.name}" from storage:`,
+              err,
+            );
+            toast({
+              title: "Download error",
+              description: `Could not retrieve "${fileMeta.name}" from cloud storage.`,
+              variant: "destructive",
+            });
+            continue;
+          }
+        }
+
         if (!buffer) {
           toast({
             title: "Missing file data",
-            description: `Could not find data for "${fileMeta.name}".`,
+            description: `Could not find data for "${fileMeta.name}". The file may need to be re-uploaded.`,
             variant: "destructive",
           });
           continue;
@@ -222,12 +334,14 @@ export function FilePanel({ className }: { className?: string }) {
         }
       }
 
-      await downloadStampedPdfs(filesToExport, allApplied, stamps);
+      if (filesToExport.length > 0) {
+        await downloadStampedPdfs(filesToExport, allApplied, stamps);
 
-      toast({
-        title: "Download complete",
-        description: `${filesToExport.length} file(s) exported.`,
-      });
+        toast({
+          title: "Download complete",
+          description: `${filesToExport.length} file(s) exported.`,
+        });
+      }
     } catch (err) {
       console.error("Download failed:", err);
       toast({
@@ -244,28 +358,68 @@ export function FilePanel({ className }: { className?: string }) {
   // Delete selected
   // -----------------------------------------------------------------------
 
-  const handleDeleteSelected = useCallback(() => {
+  const handleDeleteSelected = useCallback(async () => {
     if (!confirmDelete) {
       setConfirmDelete(true);
       return;
     }
 
     const ids = Array.from(selectedFileIds);
+    setDeleting(true);
+    setConfirmDelete(false);
 
-    // Clean up in-memory buffers and applied stamps
+    // Clean up in-memory buffers and applied stamps (local)
     for (const id of ids) {
       removeFileBuffer(id);
       clearFile(id);
     }
 
+    // Remove from local store immediately for responsive UI
     removeFiles(ids);
-    setConfirmDelete(false);
 
     toast({
       title: "Files deleted",
       description: `${ids.length} file(s) removed.`,
     });
-  }, [confirmDelete, selectedFileIds, removeFiles, clearFile]);
+
+    // Clean up Firebase resources in the background
+    if (user) {
+      for (const fileId of ids) {
+        (async () => {
+          try {
+            // Delete applied stamps subcollection first
+            await deleteAllAppliedStampsForFile(user.uid, fileId);
+          } catch (err) {
+            console.error(
+              `[FilePanel] Failed to delete applied stamps for file ${fileId}:`,
+              err,
+            );
+          }
+          try {
+            // Delete the PDF from Storage
+            await deletePdfFile(user.uid, fileId);
+          } catch (err) {
+            // Storage object may not exist if upload failed — that's fine
+            console.error(
+              `[FilePanel] Failed to delete storage object for file ${fileId}:`,
+              err,
+            );
+          }
+          try {
+            // Delete the metadata document from Firestore
+            await deleteFileMetadata(user.uid, fileId);
+          } catch (err) {
+            console.error(
+              `[FilePanel] Failed to delete metadata for file ${fileId}:`,
+              err,
+            );
+          }
+        })();
+      }
+    }
+
+    setDeleting(false);
+  }, [confirmDelete, selectedFileIds, removeFiles, clearFile, user]);
 
   // Cancel delete confirmation when clicking elsewhere
   const handlePanelClick = useCallback(() => {
@@ -352,6 +506,7 @@ export function FilePanel({ className }: { className?: string }) {
                 const isActive = file.id === activeFileId;
                 const isSelected = selectedFileIds.has(file.id);
                 const stampCount = countStampsForFile(appliedStamps, file.id);
+                const isUploading = uploadingFileIds.has(file.id);
 
                 return (
                   <li
@@ -391,6 +546,12 @@ export function FilePanel({ className }: { className?: string }) {
                       </div>
                     </button>
 
+                    {isUploading && (
+                      <span title="Uploading to cloud...">
+                        <CloudUpload className="h-4 w-4 shrink-0 animate-pulse text-muted-foreground" />
+                      </span>
+                    )}
+
                     {stampCount > 0 && (
                       <Badge variant="secondary" className="shrink-0">
                         {stampCount}
@@ -428,9 +589,13 @@ export function FilePanel({ className }: { className?: string }) {
                 e.stopPropagation();
                 handleDeleteSelected();
               }}
-              disabled={!hasSelection}
+              disabled={!hasSelection || deleting}
             >
-              <Trash2 className="h-4 w-4" />
+              {deleting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
               {confirmDelete ? "Confirm?" : "Delete"}
             </Button>
           </div>

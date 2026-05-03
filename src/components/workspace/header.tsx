@@ -49,6 +49,7 @@ export function Header({ className }: { className?: string }) {
             size="icon"
             onClick={() => setGeneratorOpen(true)}
             title="AI Stamp Generator"
+            aria-label="AI Stamp Generator"
           >
             <Sparkles className="h-4 w-4" />
           </Button>
@@ -57,10 +58,11 @@ export function Header({ className }: { className?: string }) {
             size="icon"
             onClick={() => setSettingsOpen(true)}
             title="AI Settings"
+            aria-label="AI Settings"
           >
             <Settings className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={handleLogout}>
+          <Button variant="ghost" size="sm" onClick={handleLogout} aria-label="Sign out">
             <LogOut className="h-4 w-4" />
             <span className="hidden sm:inline">Sign out</span>
           </Button>

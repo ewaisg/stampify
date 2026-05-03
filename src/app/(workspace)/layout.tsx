@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { Header } from "@/components/workspace/header";
+import { Footer } from "@/components/workspace/footer";
 import { Toaster } from "@/components/ui/toast";
 import { ErrorBoundary } from "@/components/workspace/error-boundary";
 import { OfflineBanner } from "@/components/workspace/offline-banner";
@@ -42,6 +43,7 @@ export default function WorkspaceLayout({
       <main className="flex-1 overflow-hidden">
         <ErrorBoundary>{children}</ErrorBoundary>
       </main>
+      <Footer />
       <Toaster />
     </div>
   );

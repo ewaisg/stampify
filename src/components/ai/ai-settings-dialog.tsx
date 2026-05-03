@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { useSettingsStore, selectActiveAIConfig } from "@/stores/settings";
+import { useSettingsActions } from "@/hooks/use-settings-actions";
 import { toast } from "@/hooks/use-toast";
 
 // ---------------------------------------------------------------------------
@@ -65,6 +66,7 @@ export function AISettingsDialog({ open, onOpenChange }: AISettingsDialogProps) 
     setActiveProvider,
   } = useSettingsStore();
 
+  const { saveAIProviders } = useSettingsActions();
   const activeConfig = useSettingsStore(selectActiveAIConfig);
   const providers = settings.ai.providers;
 
@@ -107,6 +109,7 @@ export function AISettingsDialog({ open, onOpenChange }: AISettingsDialogProps) 
   function handleDelete(index: number) {
     removeProvider(index);
     toast({ title: "Provider removed" });
+    saveAIProviders();
   }
 
   function handleCancel() {
@@ -140,6 +143,7 @@ export function AISettingsDialog({ open, onOpenChange }: AISettingsDialogProps) 
     }
 
     handleCancel();
+    saveAIProviders();
   }
 
   async function handleTestConnection() {
@@ -198,6 +202,7 @@ export function AISettingsDialog({ open, onOpenChange }: AISettingsDialogProps) 
   function handleSetActive(type: AIProviderType) {
     setActiveProvider(type);
     toast({ title: `${PROVIDER_LABELS[type]} set as active provider` });
+    saveAIProviders();
   }
 
   // ------- render -------

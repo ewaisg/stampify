@@ -1,6 +1,7 @@
 {
   "name": "stampify",
-  "version": "0.1.0",
+  "version": "2.0.0",
+  "description": "Upload, view, and stamp PDFs with ease.",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack -p 9002",

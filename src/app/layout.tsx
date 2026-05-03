@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Providers from "./providers";
@@ -16,6 +16,19 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Stampify",
   description: "Upload, view, and stamp PDFs with ease.",
+  icons: { icon: "/favicon.ico" },
+  manifest: "/manifest.json",
+  openGraph: {
+    title: "Stampify",
+    description: "Upload, view, and stamp PDFs with ease.",
+    type: "website",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#2563eb",
 };
 
 export default function RootLayout({

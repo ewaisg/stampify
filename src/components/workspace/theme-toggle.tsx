@@ -3,6 +3,7 @@
 import { Sun, Moon, Monitor } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/hooks/use-theme";
+import { useSettingsActions } from "@/hooks/use-settings-actions";
 
 // ---------------------------------------------------------------------------
 // Component
@@ -14,6 +15,7 @@ import { useTheme } from "@/hooks/use-theme";
  */
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
+  const { updateTheme } = useSettingsActions();
 
   const cycleTheme = () => {
     const order: Array<"system" | "light" | "dark"> = [
@@ -23,7 +25,9 @@ export function ThemeToggle() {
     ];
     const currentIndex = order.indexOf(theme);
     const nextIndex = (currentIndex + 1) % order.length;
-    setTheme(order[nextIndex]);
+    const next = order[nextIndex];
+    setTheme(next);
+    updateTheme(next);
   };
 
   const icon =

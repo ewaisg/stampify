@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { FilePanel } from "@/components/workspace/file-panel";
 import { PdfCanvas } from "@/components/workspace/pdf-canvas";
 import { StampPanel } from "@/components/stamps/stamp-panel";
+import { Onboarding } from "@/components/workspace/onboarding";
 import { useFirestoreSync } from "@/hooks/use-firestore-sync";
 import { useAppliedStampsSync } from "@/hooks/use-applied-stamps-sync";
 import { useAppliedStampActions } from "@/hooks/use-applied-stamp-actions";
@@ -126,12 +127,15 @@ export default function WorkspacePage() {
           {activeFile ? (
             <PdfCanvas pdfData={pdfData} />
           ) : (
-            <div className="flex flex-col items-center gap-3 text-center">
-              <FileUp className="h-12 w-12 text-muted-foreground/50" />
-              <p className="text-sm text-muted-foreground">
-                Upload or select a PDF to get started
-              </p>
-            </div>
+            <>
+              <div className="flex flex-col items-center gap-3 text-center">
+                <FileUp className="h-12 w-12 text-muted-foreground/50" />
+                <p className="text-sm text-muted-foreground">
+                  Upload or select a PDF to get started
+                </p>
+              </div>
+              <Onboarding />
+            </>
           )}
         </div>
       </section>

@@ -34,7 +34,7 @@ export class AzureAIProvider implements AIProvider {
       body.temperature = request.temperature;
     }
     if (request.maxTokens !== undefined) {
-      body.max_tokens = request.maxTokens;
+      body.max_completion_tokens = request.maxTokens;
     }
     if (request.responseFormat === "json") {
       body.response_format = { type: "json_object" };

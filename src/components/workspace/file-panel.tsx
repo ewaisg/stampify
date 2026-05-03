@@ -444,7 +444,7 @@ export function FilePanel({ className }: { className?: string }) {
 
   return (
     <div
-      className={cn("flex flex-col border-r bg-card", className)}
+      className={cn("flex h-full flex-col border-r bg-card", className)}
       onClick={handlePanelClick}
     >
       {/* Header */}

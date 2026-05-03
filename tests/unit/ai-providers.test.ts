@@ -151,7 +151,7 @@ describe("OpenAIProvider.sendCompletion", () => {
     const body = JSON.parse(options?.body as string);
     expect(body.model).toBe("gpt-4o");
     expect(body.temperature).toBe(0.7);
-    expect(body.max_tokens).toBe(100);
+    expect(body.max_completion_tokens).toBe(100);
     expect(body.messages).toEqual([{ role: "user", content: "Hi" }]);
   });
 

@@ -373,7 +373,9 @@ export function PdfCanvas({ pdfData }: PdfCanvasProps) {
     return () => {
       cancelled = true;
     };
-  }, [pdfDoc, currentPage, zoom]);
+  // pdfData included so the effect re-fires when a new file is loaded
+  // even if currentPage stays at 1 from the previous file
+  }, [pdfDoc, currentPage, zoom, pdfData]);
 
   // -----------------------------------------------------------------------
   // Render stamp overlay
@@ -577,7 +579,9 @@ export function PdfCanvas({ pdfData }: PdfCanvasProps) {
       e.preventDefault();
       if (!fileId) return;
 
-      const stampId = e.dataTransfer.getData("application/x-stamp-id");
+      const stampId =
+        e.dataTransfer.getData("application/stampify-stamp-id") ||
+        e.dataTransfer.getData("text/plain");
       if (!stampId) return;
 
       const stampDef = stamps.find((s) => s.id === stampId);

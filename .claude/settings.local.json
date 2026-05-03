@@ -22,7 +22,8 @@
       "Bash(npx kill-port *)",
       "Bash(curl -s http://localhost:9002/login)",
       "Bash(curl -s http://localhost:9002/_next/static/chunks/src_13xzt~-._.js)",
-      "Bash(npx firebase *)"
+      "Bash(npx firebase *)",
+      "Bash(git checkout *)"
     ]
   }
 }

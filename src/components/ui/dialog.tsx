@@ -136,7 +136,7 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
           role="dialog"
           aria-modal="true"
           className={cn(
-            "relative z-50 grid w-full max-w-lg gap-4 border bg-background p-6 shadow-lg sm:rounded-lg",
+            "relative z-50 grid w-full max-w-lg max-h-[90vh] overflow-y-auto gap-4 border bg-background p-6 shadow-lg sm:rounded-lg",
             className,
           )}
           {...props}

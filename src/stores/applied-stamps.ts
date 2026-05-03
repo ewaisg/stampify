@@ -24,6 +24,12 @@ interface AppliedStampsActions {
     page: number,
     stamp: Omit<AppliedStamp, "id" | "page">,
   ) => AppliedStamp;
+  /** Insert a stamp with a pre-existing id (used by undo/redo restore). */
+  addAppliedStampWithId: (
+    fileId: string,
+    page: number,
+    stamp: AppliedStamp,
+  ) => void;
   updateAppliedStamp: (
     fileId: string,
     page: number,
@@ -128,6 +134,17 @@ export const useAppliedStampsStore = create<
 
     return created;
   },
+
+  addAppliedStampWithId: (fileId, page, stamp) =>
+    set((state) => {
+      const next = cloneFileMap(state.appliedStamps);
+      const arr = ensurePage(next, fileId, page);
+      const { baseWidth, baseHeight } = normalizeBase(stamp);
+      const restored: AppliedStamp = { ...stamp, baseWidth, baseHeight };
+      arr.push(restored);
+      next.get(fileId)!.set(page, [...arr]);
+      return { appliedStamps: next };
+    }),
 
   updateAppliedStamp: (fileId, page, stamp) =>
     set((state) => {

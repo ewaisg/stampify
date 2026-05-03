@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { ImagePlus } from "lucide-react";
 
-import { useStampsStore } from "@/stores/stamps";
+import { useStampActions } from "@/hooks/use-stamp-actions";
 import { toast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,7 +32,7 @@ interface ImageStampFormProps {
 }
 
 export function ImageStampForm({ onStampCreated }: ImageStampFormProps) {
-  const addStamp = useStampsStore((s) => s.addStamp);
+  const { createImageStamp } = useStampActions();
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -79,13 +79,14 @@ export function ImageStampForm({ onStampCreated }: ImageStampFormProps) {
     [setValue],
   );
 
-  function onSubmit(values: ImageStampFormValues) {
-    if (!previewUrl || !imageDimensions) {
+  async function onSubmit(values: ImageStampFormValues) {
+    if (!previewUrl || !imageDimensions || !imageFile) {
       toast({ title: "No image selected", description: "Please upload an image first.", variant: "destructive" });
       return;
     }
 
-    // For now, store the data URL as storageUrl (Firebase Storage upload will be added later)
+    // Use the data URL as an optimistic placeholder; the hook will upload to
+    // Firebase Storage and replace it with the real URL before persisting.
     const newStamp: NewImageStamp = {
       type: "image",
       name: values.name,
@@ -94,9 +95,11 @@ export function ImageStampForm({ onStampCreated }: ImageStampFormProps) {
       height: imageDimensions.height,
     };
 
-    addStamp(newStamp);
-    toast({ title: "Image stamp created", description: `"${values.name}" has been added to your library.` });
-    onStampCreated();
+    const id = await createImageStamp(newStamp, imageFile);
+    if (id) {
+      toast({ title: "Image stamp created", description: `"${values.name}" has been added to your library.` });
+      onStampCreated();
+    }
   }
 
   return (

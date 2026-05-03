@@ -13,6 +13,7 @@ interface FilesState {
 }
 
 interface FilesActions {
+  setFiles: (files: FileMetadata[]) => void;
   addFiles: (files: FileMetadata[]) => void;
   removeFile: (id: string) => void;
   removeFiles: (ids: string[]) => void;
@@ -41,6 +42,8 @@ const initialState: FilesState = {
 
 export const useFilesStore = create<FilesState & FilesActions>()((set) => ({
   ...initialState,
+
+  setFiles: (files) => set({ files }),
 
   addFiles: (newFiles) =>
     set((state) => ({ files: [...state.files, ...newFiles] })),

@@ -5,6 +5,7 @@ import { Plus, Pencil, Trash2, Type, Image, Layers, Stamp } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useStampsStore } from "@/stores/stamps";
+import { useStampActions } from "@/hooks/use-stamp-actions";
 import { toast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,7 +39,7 @@ type EditMode = { kind: "prepare"; template: DynamicStamp | PreparedStamp };
 
 export function StampPanel() {
   const stamps = useStampsStore((s) => s.stamps);
-  const deleteStamp = useStampsStore((s) => s.deleteStamp);
+  const { removeStamp, editStamp } = useStampActions();
 
   // Dialog state
   const [createOpen, setCreateOpen] = useState(false);
@@ -69,9 +70,11 @@ export function StampPanel() {
 
   // ---- Delete ----
 
-  function handleDelete(stamp: StampType) {
-    deleteStamp(stamp.id);
-    toast({ title: "Stamp deleted", description: `"${stamp.name}" has been removed.` });
+  async function handleDelete(stamp: StampType) {
+    const ok = await removeStamp(stamp.id);
+    if (ok) {
+      toast({ title: "Stamp deleted", description: `"${stamp.name}" has been removed.` });
+    }
   }
 
   // ---- Drag ----

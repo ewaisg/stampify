@@ -10,6 +10,8 @@ interface UIState {
   theme: "light" | "dark" | "system";
   zoom: number;
   currentPage: number;
+  totalPages: number;
+  selectedStampId: string | null;
 }
 
 interface UIActions {
@@ -18,6 +20,8 @@ interface UIActions {
   setTheme: (theme: "light" | "dark" | "system") => void;
   setZoom: (zoom: number) => void;
   setCurrentPage: (page: number) => void;
+  setTotalPages: (pages: number) => void;
+  setSelectedStampId: (id: string | null) => void;
   resetView: () => void;
 }
 
@@ -31,6 +35,8 @@ const initialState: UIState = {
   theme: "system",
   zoom: 1,
   currentPage: 1,
+  totalPages: 0,
+  selectedStampId: null,
 };
 
 // ---------------------------------------------------------------------------
@@ -51,6 +57,10 @@ export const useUIStore = create<UIState & UIActions>()((set) => ({
   setZoom: (zoom) => set({ zoom }),
 
   setCurrentPage: (page) => set({ currentPage: page }),
+
+  setTotalPages: (pages) => set({ totalPages: pages }),
+
+  setSelectedStampId: (id) => set({ selectedStampId: id }),
 
   resetView: () =>
     set({

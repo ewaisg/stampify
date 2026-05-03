@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Plus, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 
-import { useStampsStore } from "@/stores/stamps";
+import { useStampActions } from "@/hooks/use-stamp-actions";
 import { toast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,7 +54,7 @@ interface DynamicStampFormProps {
 }
 
 export function DynamicStampForm({ onStampCreated, onTemplateDesigned }: DynamicStampFormProps) {
-  const addStamp = useStampsStore((s) => s.addStamp);
+  const { createStamp } = useStampActions();
 
   const {
     register,
@@ -114,7 +114,7 @@ export function DynamicStampForm({ onStampCreated, onTemplateDesigned }: Dynamic
     });
   }
 
-  function onSubmit(values: DynamicStampFormValues) {
+  async function onSubmit(values: DynamicStampFormValues) {
     const processedFields = processFields(values.fields);
 
     const template: Omit<DynamicStamp, "id"> = {
@@ -129,12 +129,14 @@ export function DynamicStampForm({ onStampCreated, onTemplateDesigned }: Dynamic
     if (onTemplateDesigned) {
       onTemplateDesigned(template);
       toast({ title: "Template designed", description: `"${values.name}" template is ready.` });
+      onStampCreated?.();
     } else {
-      addStamp(template as NewDynamicStamp);
-      toast({ title: "Dynamic stamp created", description: `"${values.name}" has been added to your library.` });
+      const id = await createStamp(template as NewDynamicStamp);
+      if (id) {
+        toast({ title: "Dynamic stamp created", description: `"${values.name}" has been added to your library.` });
+        onStampCreated?.();
+      }
     }
-
-    onStampCreated?.();
   }
 
   function handleAddField() {

@@ -243,7 +243,7 @@ interface PdfCanvasProps {
 
 export function PdfCanvas({ pdfData }: PdfCanvasProps) {
   // Stores
-  const { currentPage, setCurrentPage, zoom, setZoom } = useUIStore();
+  const { currentPage, setCurrentPage, zoom, setZoom, setTotalPages, selectedStampId, setSelectedStampId } = useUIStore();
   const { activeFileId } = useFilesStore();
   const stamps = useStampsStore((s) => s.stamps);
   const appliedStamps = useAppliedStampsStore((s) => s.appliedStamps);
@@ -263,7 +263,6 @@ export function PdfCanvas({ pdfData }: PdfCanvasProps) {
   const [error, setError] = useState<string | null>(null);
 
   // Interaction state
-  const [selectedStampId, setSelectedStampId] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [resizing, setResizing] = useState<number>(-1); // corner index
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
@@ -290,6 +289,11 @@ export function PdfCanvas({ pdfData }: PdfCanvasProps) {
     () => stampsOnPage.find((s) => s.id === selectedStampId) ?? null,
     [stampsOnPage, selectedStampId],
   );
+
+  // Sync pageCount to UI store so other components can access it
+  useEffect(() => {
+    setTotalPages(pageCount);
+  }, [pageCount, setTotalPages]);
 
   // -----------------------------------------------------------------------
   // Load PDF document

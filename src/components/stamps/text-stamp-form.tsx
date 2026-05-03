@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
-import { useStampsStore } from "@/stores/stamps";
+import { useStampActions } from "@/hooks/use-stamp-actions";
 import { toast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,7 +44,7 @@ interface TextStampFormProps {
 }
 
 export function TextStampForm({ onStampCreated }: TextStampFormProps) {
-  const addStamp = useStampsStore((s) => s.addStamp);
+  const { createStamp } = useStampActions();
 
   const {
     register,
@@ -72,7 +72,7 @@ export function TextStampForm({ onStampCreated }: TextStampFormProps) {
   const opacity = watch("opacity");
   const rotation = watch("rotation");
 
-  function onSubmit(values: TextStampFormValues) {
+  async function onSubmit(values: TextStampFormValues) {
     // Estimate dimensions from text length and font size
     const charWidth = values.fontSize * 0.6;
     const estimatedWidth = Math.max(100, values.text.length * charWidth + 40);
@@ -94,9 +94,11 @@ export function TextStampForm({ onStampCreated }: TextStampFormProps) {
       height: Math.round(estimatedHeight),
     };
 
-    addStamp(newStamp);
-    toast({ title: "Text stamp created", description: `"${values.name}" has been added to your library.` });
-    onStampCreated();
+    const id = await createStamp(newStamp);
+    if (id) {
+      toast({ title: "Text stamp created", description: `"${values.name}" has been added to your library.` });
+      onStampCreated();
+    }
   }
 
   return (

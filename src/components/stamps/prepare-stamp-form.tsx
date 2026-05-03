@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { ImagePlus } from "lucide-react";
 
-import { useStampsStore } from "@/stores/stamps";
+import { useStampActions } from "@/hooks/use-stamp-actions";
 import { toast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,7 +21,7 @@ interface PrepareStampFormProps {
 }
 
 export function PrepareStampForm({ template, onStampPrepared }: PrepareStampFormProps) {
-  const { addStamp, updateStamp } = useStampsStore();
+  const { createStamp, editStamp } = useStampActions();
 
   const isEditing = template.type === "prepared";
   const existingData = isEditing ? (template as PreparedStamp).data : {};
@@ -88,7 +88,7 @@ export function PrepareStampForm({ template, onStampPrepared }: PrepareStampForm
     reader.readAsDataURL(file);
   }, []);
 
-  function onSubmit() {
+  async function onSubmit() {
     // Build the data record
     const data: Record<string, any> = {};
     for (const field of template.fields) {
@@ -100,9 +100,11 @@ export function PrepareStampForm({ template, onStampPrepared }: PrepareStampForm
 
     if (isEditing) {
       // Update existing prepared stamp
-      updateStamp(template.id, { data });
-      toast({ title: "Stamp updated", description: "Prepared stamp values have been updated." });
-      onStampPrepared(template.id);
+      const ok = await editStamp(template.id, { data });
+      if (ok) {
+        toast({ title: "Stamp updated", description: "Prepared stamp values have been updated." });
+        onStampPrepared(template.id);
+      }
     } else {
       // Create new prepared stamp
       const templateId = template.id;
@@ -116,9 +118,11 @@ export function PrepareStampForm({ template, onStampPrepared }: PrepareStampForm
         backgroundColor: template.backgroundColor,
         data,
       };
-      const id = addStamp(newStamp);
-      toast({ title: "Stamp prepared", description: `"${newStamp.name}" is ready to use.` });
-      onStampPrepared(id);
+      const id = await createStamp(newStamp);
+      if (id) {
+        toast({ title: "Stamp prepared", description: `"${newStamp.name}" is ready to use.` });
+        onStampPrepared(id);
+      }
     }
   }
 

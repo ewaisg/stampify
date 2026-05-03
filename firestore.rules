@@ -1,0 +1,98 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // Helper functions
+    // =========================================================================
+
+    // Check that the authenticated user owns this resource path.
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // Verify a field exists and is a non-empty string.
+    function isNonEmptyString(field) {
+      return field is string && field.size() > 0;
+    }
+
+    // =========================================================================
+    // users/{uid}/stamps/{stampId}
+    //
+    // Stamp definitions — each stamp has a type and a name at minimum.
+    // Valid types: "text", "image", "dynamic", "prepared".
+    // =========================================================================
+    match /users/{uid}/stamps/{stampId} {
+      allow read: if isOwner(uid);
+
+      allow create: if isOwner(uid)
+        && isNonEmptyString(request.resource.data.name)
+        && request.resource.data.type in ['text', 'image', 'dynamic', 'prepared'];
+
+      allow update: if isOwner(uid)
+        && isNonEmptyString(request.resource.data.name)
+        && request.resource.data.type in ['text', 'image', 'dynamic', 'prepared'];
+
+      allow delete: if isOwner(uid);
+    }
+
+    // =========================================================================
+    // users/{uid}/files/{fileId}
+    //
+    // File metadata — must contain a name and a userId that matches the
+    // path uid so the document is self-consistent.
+    // =========================================================================
+    match /users/{uid}/files/{fileId} {
+      allow read: if isOwner(uid);
+
+      allow create: if isOwner(uid)
+        && isNonEmptyString(request.resource.data.name)
+        && request.resource.data.userId == uid;
+
+      allow update: if isOwner(uid)
+        && isNonEmptyString(request.resource.data.name)
+        && request.resource.data.userId == uid;
+
+      allow delete: if isOwner(uid);
+
+      // =====================================================================
+      // users/{uid}/files/{fileId}/appliedStamps/{stampId}
+      //
+      // Applied stamp positions on a file — requires stampId, page number,
+      // coordinates (x, y), and dimensions (width, height).
+      // =====================================================================
+      match /appliedStamps/{stampId} {
+        allow read: if isOwner(uid);
+
+        allow create: if isOwner(uid)
+          && isNonEmptyString(request.resource.data.stampId)
+          && request.resource.data.page is int
+          && request.resource.data.x is number
+          && request.resource.data.y is number
+          && request.resource.data.width is number
+          && request.resource.data.height is number;
+
+        allow update: if isOwner(uid)
+          && isNonEmptyString(request.resource.data.stampId)
+          && request.resource.data.page is int
+          && request.resource.data.x is number
+          && request.resource.data.y is number
+          && request.resource.data.width is number
+          && request.resource.data.height is number;
+
+        allow delete: if isOwner(uid);
+      }
+    }
+
+    // =========================================================================
+    // users/{uid}/settings/{settingId}
+    //
+    // User settings (AI configuration, theme preferences, etc.).
+    // Only the owning user may read or write.
+    // =========================================================================
+    match /users/{uid}/settings/{settingId} {
+      allow read, write: if isOwner(uid);
+    }
+  }
+}

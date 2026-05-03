@@ -15,8 +15,10 @@ import { FilePanel } from "@/components/workspace/file-panel";
 import { PdfCanvas } from "@/components/workspace/pdf-canvas";
 import { StampPanel } from "@/components/stamps/stamp-panel";
 import { useFirestoreSync } from "@/hooks/use-firestore-sync";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { useAppliedStampsStore } from "@/stores/applied-stamps";
 import { getFileBuffer } from "@/lib/pdf/file-manager";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 
 export default function WorkspacePage() {
   useFirestoreSync();
@@ -25,7 +27,34 @@ export default function WorkspacePage() {
   const rightPanelOpen = useUIStore((s) => s.rightPanelOpen);
   const toggleLeftPanel = useUIStore((s) => s.toggleLeftPanel);
   const toggleRightPanel = useUIStore((s) => s.toggleRightPanel);
+  const currentPage = useUIStore((s) => s.currentPage);
+  const totalPages = useUIStore((s) => s.totalPages);
+  const selectedStampId = useUIStore((s) => s.selectedStampId);
+  const setSelectedStampId = useUIStore((s) => s.setSelectedStampId);
   const activeFile = useFilesStore(selectActiveFile);
+  const activeFileId = useFilesStore((s) => s.activeFileId);
+  const deleteAppliedStamp = useAppliedStampsStore((s) => s.deleteAppliedStamp);
+
+  const fileId = activeFileId ?? "";
+
+  const deleteStamp = useCallback(() => {
+    if (!fileId || !selectedStampId) return;
+    deleteAppliedStamp(fileId, currentPage, selectedStampId);
+    setSelectedStampId(null);
+  }, [fileId, selectedStampId, currentPage, deleteAppliedStamp, setSelectedStampId]);
+
+  const deselectStamp = useCallback(() => {
+    setSelectedStampId(null);
+  }, [setSelectedStampId]);
+
+  useKeyboardShortcuts({
+    selectedStampId,
+    fileId,
+    currentPage,
+    totalPages,
+    deleteStamp,
+    deselectStamp,
+  });
 
   const pdfData = useMemo(() => {
     if (!activeFile) return null;

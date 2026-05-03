@@ -234,15 +234,20 @@ function hitTestStamp(
 // Props
 // ---------------------------------------------------------------------------
 
+type PdfSource =
+  | { type: "buffer"; data: ArrayBuffer }
+  | { type: "url"; url: string }
+  | null;
+
 interface PdfCanvasProps {
-  pdfData: ArrayBuffer | null;
+  pdfSource: PdfSource;
 }
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export function PdfCanvas({ pdfData }: PdfCanvasProps) {
+export function PdfCanvas({ pdfSource }: PdfCanvasProps) {
   // Stores
   const { currentPage, setCurrentPage, zoom, setZoom, setTotalPages, selectedStampId, setSelectedStampId } = useUIStore();
   const { activeFileId } = useFilesStore();
@@ -305,7 +310,7 @@ export function PdfCanvas({ pdfData }: PdfCanvasProps) {
   // -----------------------------------------------------------------------
 
   useEffect(() => {
-    if (!pdfData) {
+    if (!pdfSource) {
       setPdfDoc(null);
       setPageCount(0);
       return;
@@ -315,7 +320,13 @@ export function PdfCanvas({ pdfData }: PdfCanvasProps) {
     setLoading(true);
     setError(null);
 
-    const loadTask = pdfjsLib.getDocument({ data: pdfData.slice(0) });
+    // pdfjs can load from an ArrayBuffer OR a URL (its worker handles CORS)
+    const pdfParam =
+      pdfSource.type === "buffer"
+        ? { data: pdfSource.data.slice(0) }
+        : { url: pdfSource.url };
+
+    const loadTask = pdfjsLib.getDocument(pdfParam);
 
     loadTask.promise
       .then((doc) => {
@@ -335,8 +346,9 @@ export function PdfCanvas({ pdfData }: PdfCanvasProps) {
 
     return () => {
       cancelled = true;
+      loadTask.destroy();
     };
-  }, [pdfData, setCurrentPage]);
+  }, [pdfSource, setCurrentPage]);
 
   // -----------------------------------------------------------------------
   // Render PDF page
@@ -349,7 +361,7 @@ export function PdfCanvas({ pdfData }: PdfCanvasProps) {
     let cancelled = false;
 
     pdfDoc.getPage(currentPage).then((page) => {
-      if (cancelled) return;
+      if (cancelled || !pdfCanvasRef.current) return;
 
       const viewport = page.getViewport({ scale: PDF_RENDER_SCALE });
       setPageSize({
@@ -357,13 +369,14 @@ export function PdfCanvas({ pdfData }: PdfCanvasProps) {
         height: viewport.height / PDF_RENDER_SCALE,
       });
 
-      const canvas = pdfCanvasRef.current!;
+      const canvas = pdfCanvasRef.current;
       canvas.width = viewport.width;
       canvas.height = viewport.height;
       canvas.style.width = `${(viewport.width / PDF_RENDER_SCALE) * zoom}px`;
       canvas.style.height = `${(viewport.height / PDF_RENDER_SCALE) * zoom}px`;
 
-      const ctx = canvas.getContext("2d")!;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
       const renderTask = page.render({ canvasContext: ctx, viewport });
       renderTask.promise.catch((err: unknown) => {
         if (!cancelled) console.error("PDF render error:", err);
@@ -373,9 +386,9 @@ export function PdfCanvas({ pdfData }: PdfCanvasProps) {
     return () => {
       cancelled = true;
     };
-  // pdfData included so the effect re-fires when a new file is loaded
+  // pdfSource included so the effect re-fires when a new file is loaded
   // even if currentPage stays at 1 from the previous file
-  }, [pdfDoc, currentPage, zoom, pdfData]);
+  }, [pdfDoc, currentPage, zoom, pdfSource]);
 
   // -----------------------------------------------------------------------
   // Render stamp overlay
@@ -659,10 +672,10 @@ export function PdfCanvas({ pdfData }: PdfCanvasProps) {
   // Render
   // -----------------------------------------------------------------------
 
-  if (!pdfData) {
+  if (!pdfSource) {
     return (
       <div className="flex flex-1 items-center justify-center text-muted-foreground">
-        <p>Upload a PDF to get started.</p>
+        <p>Select a PDF from the Files panel.</p>
       </div>
     );
   }

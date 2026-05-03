@@ -20,8 +20,7 @@ import { useAppliedStampsSync } from "@/hooks/use-applied-stamps-sync";
 import { useAppliedStampActions } from "@/hooks/use-applied-stamp-actions";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { getFileBuffer } from "@/lib/pdf/file-manager";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { addFileBuffer } from "@/lib/pdf/file-manager";
+import { useCallback, useMemo } from "react";
 
 export default function WorkspacePage() {
   useFirestoreSync();
@@ -62,54 +61,15 @@ export default function WorkspacePage() {
     deselectStamp,
   });
 
-  // Resolved ArrayBuffer — either from local cache or fetched from Storage URL
-  const [resolvedPdfData, setResolvedPdfData] = useState<ArrayBuffer | null>(null);
-  const fetchingRef = useRef<string | null>(null); // track which fileId is being fetched
-
-  useEffect(() => {
-    if (!activeFile) {
-      setResolvedPdfData(null);
-      fetchingRef.current = null;
-      return;
-    }
-
-    // 1. Check local cache first (fast path — already in memory)
-    const local = getFileBuffer(activeFile.id);
-    if (local) {
-      setResolvedPdfData(local);
-      fetchingRef.current = null;
-      return;
-    }
-
-    // 2. No local buffer — fetch from Firebase Storage URL
-    if (!activeFile.storageUrl) {
-      setResolvedPdfData(null);
-      return;
-    }
-
-    // Avoid duplicate fetches for the same file
-    if (fetchingRef.current === activeFile.id) return;
-    fetchingRef.current = activeFile.id;
-
-    setResolvedPdfData(null); // clear while loading
-    fetch(activeFile.storageUrl)
-      .then((r) => r.arrayBuffer())
-      .then((buf) => {
-        addFileBuffer(activeFile.id, buf);
-        if (fetchingRef.current === activeFile.id) {
-          setResolvedPdfData(buf);
-        }
-      })
-      .catch((err) => {
-        console.error("[WorkspacePage] Failed to fetch PDF from storage:", err);
-        if (fetchingRef.current === activeFile.id) {
-          fetchingRef.current = null;
-        }
-      });
+  // Provide pdfjs with either an in-memory buffer (just-uploaded) or a URL
+  // (loaded from Firestore on page refresh). pdfjs worker handles both natively.
+  const pdfSource = useMemo(() => {
+    if (!activeFile) return null;
+    const buf = getFileBuffer(activeFile.id);
+    if (buf) return { type: "buffer" as const, data: buf };
+    if (activeFile.storageUrl) return { type: "url" as const, url: activeFile.storageUrl };
+    return null;
   }, [activeFile]);
-
-  // Keep pdfData as an alias used below
-  const pdfData = resolvedPdfData;
 
   return (
     <div className="relative flex h-full">
@@ -170,7 +130,7 @@ export default function WorkspacePage() {
         {/* Canvas area */}
         <div className="flex flex-1 items-center justify-center overflow-auto bg-muted/10">
           {activeFile ? (
-            <PdfCanvas pdfData={pdfData} />
+            <PdfCanvas pdfSource={pdfSource} />
           ) : (
             <>
               <div className="flex flex-col items-center gap-3 text-center">

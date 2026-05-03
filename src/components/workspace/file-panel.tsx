@@ -396,14 +396,17 @@ export function FilePanel({ className }: { className?: string }) {
             );
           }
           try {
-            // Delete the PDF from Storage
+            // Delete the PDF from Storage (may not exist if upload failed)
             await deletePdfFile(user.uid, fileId);
-          } catch (err) {
-            // Storage object may not exist if upload failed — that's fine
-            console.error(
-              `[FilePanel] Failed to delete storage object for file ${fileId}:`,
-              err,
-            );
+          } catch (err: unknown) {
+            const code = (err as { code?: string })?.code;
+            if (code !== "storage/object-not-found") {
+              console.error(
+                `[FilePanel] Failed to delete storage object for file ${fileId}:`,
+                err,
+              );
+            }
+            // object-not-found is expected when upload failed — silently ignore
           }
           try {
             // Delete the metadata document from Firestore

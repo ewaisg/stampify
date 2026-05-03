@@ -44,7 +44,22 @@ const initialState: FilesState = {
 export const useFilesStore = create<FilesState & FilesActions>()((set) => ({
   ...initialState,
 
-  setFiles: (files) => set({ files }),
+  // Merge remote files with locally-added files that haven't been persisted yet.
+  // Locally-added files not in the remote set are kept so the user can still
+  // view/stamp them while the upload is in progress.
+  setFiles: (remoteFiles) =>
+    set((state) => {
+      const remoteIds = new Set(remoteFiles.map((f) => f.id));
+      // Keep local-only files (upload still in progress)
+      const localOnly = state.files.filter((f) => !remoteIds.has(f.id));
+      const merged = [...remoteFiles, ...localOnly];
+      // Preserve activeFileId if the file still exists in merged list
+      const activeStillExists = merged.some((f) => f.id === state.activeFileId);
+      return {
+        files: merged,
+        activeFileId: activeStillExists ? state.activeFileId : merged[0]?.id ?? null,
+      };
+    }),
 
   addFiles: (newFiles) =>
     set((state) => ({ files: [...state.files, ...newFiles] })),

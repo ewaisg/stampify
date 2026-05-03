@@ -13,6 +13,7 @@ export class AzureAIProvider implements AIProvider {
   private model: string;
 
   constructor(endpoint: string, apiKey: string, model: string) {
+    // Strip trailing slash
     this.endpoint = endpoint.replace(/\/+$/, "");
     this.apiKey = apiKey;
     this.model = model;
@@ -21,9 +22,12 @@ export class AzureAIProvider implements AIProvider {
   async sendCompletion(
     request: AICompletionRequest
   ): Promise<AICompletionResponse> {
-    const url = `${this.endpoint}/openai/deployments/${this.model}/chat/completions?api-version=2024-08-01-preview`;
+    // Azure AI Foundry (ai.azure.com) uses the endpoint directly with /chat/completions
+    // The endpoint already contains the base path (e.g. .../openai/v1)
+    const url = `${this.endpoint}/chat/completions`;
 
     const body: Record<string, unknown> = {
+      model: this.model,
       messages: request.messages.map((m) => ({
         role: m.role,
         content: m.content,
@@ -44,7 +48,8 @@ export class AzureAIProvider implements AIProvider {
       const response = await fetch(url, {
         method: "POST",
         headers: {
-          "api-key": this.apiKey,
+          // Azure AI Foundry uses Bearer token auth
+          "Authorization": `Bearer ${this.apiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
@@ -85,7 +90,7 @@ export class AzureAIProvider implements AIProvider {
     try {
       await this.sendCompletion({
         messages: [{ role: "user", content: "ping" }],
-        maxTokens: 5,
+        maxTokens: 10,
       });
       return true;
     } catch {
@@ -101,6 +106,7 @@ function mapFinishReason(
     case "stop":
       return "stop";
     case "length":
+    case "max_tokens":
       return "length";
     default:
       return "error";

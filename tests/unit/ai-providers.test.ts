@@ -242,13 +242,11 @@ describe("AzureAIProvider.sendCompletion", () => {
 
     const fetchMock = vi.mocked(fetch);
     const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toContain(
-      "my-resource.openai.azure.com/openai/deployments/gpt-4o/chat/completions",
-    );
-    expect(url).toContain("api-version=");
+    expect(url).toContain("my-resource.openai.azure.com");
+    expect(url).toContain("/chat/completions");
     expect(options?.headers).toEqual(
       expect.objectContaining({
-        "api-key": "az-key",
+        "Authorization": "Bearer az-key",
       }),
     );
   });
@@ -270,9 +268,8 @@ describe("AzureAIProvider.sendCompletion", () => {
     const fetchMock = vi.mocked(fetch);
     const [url] = fetchMock.mock.calls[0];
     expect(url).not.toContain("///");
-    expect(url).toMatch(
-      /^https:\/\/my-resource\.openai\.azure\.com\/openai\//,
-    );
+    expect(url).toContain("my-resource.openai.azure.com");
+    expect(url).toContain("/chat/completions");
   });
 
   it("throws on API error", async () => {

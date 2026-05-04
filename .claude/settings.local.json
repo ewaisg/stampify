@@ -24,7 +24,9 @@
       "Bash(curl -s http://localhost:9002/_next/static/chunks/src_13xzt~-._.js)",
       "Bash(npx firebase *)",
       "Bash(git checkout *)",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(k\\) for k in d.get\\('pages',{}\\).keys\\(\\)]\")",
+      "Bash(grep -v \"^$\")"
     ]
   }
 }

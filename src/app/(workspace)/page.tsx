@@ -176,10 +176,13 @@ export default function WorkspacePage() {
         </div>
 
         {/* Canvas area */}
-        <div className="flex flex-1 items-center justify-center overflow-auto bg-muted/10">
+        <div className={cn(
+          "flex flex-1 overflow-auto bg-muted/10",
+          activeFile ? "flex-col" : "items-center justify-center",
+        )}>
           {activeFile ? (
             pdfFetchError ? (
-              <div className="flex flex-col items-center gap-3 text-center">
+              <div className="flex flex-1 items-center justify-center">
                 <p className="text-sm text-destructive">{pdfFetchError}</p>
               </div>
             ) : (

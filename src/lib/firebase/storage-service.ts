@@ -8,7 +8,6 @@ import {
   listAll,
 } from "firebase/storage";
 import { getFirebaseStorage } from "@/lib/firebase";
-import { getFirebaseAuth } from "@/lib/firebase/auth";
 import {
   MAX_FILE_SIZE_MB,
   MAX_IMAGE_SIZE_MB,
@@ -134,9 +133,9 @@ export async function deletePdfFile(
 /**
  * Download a PDF from Firebase Storage as an ArrayBuffer.
  *
- * Routes the request through /api/pdf (a Next.js server-side proxy) so the
- * browser never touches firebasestorage.googleapis.com directly. This
- * permanently solves CORS — the server-to-server fetch is unrestricted.
+ * First obtains a short-lived Firebase download URL (with auth token embedded),
+ * then routes through /api/pdf — a server-side Next.js proxy — so the browser
+ * never sends a cross-origin request to firebasestorage.googleapis.com directly.
  *
  * Path on Storage: `users/{uid}/files/{fileId}.pdf`
  */
@@ -144,16 +143,15 @@ export async function downloadPdfAsBuffer(
   uid: string,
   fileId: string,
 ): Promise<ArrayBuffer> {
-  const auth = getFirebaseAuth();
-  const currentUser = auth.currentUser;
-  if (!currentUser) throw new Error("Not authenticated.");
+  const storage = getFirebaseStorage();
+  const fileRef = ref(storage, `users/${uid}/files/${fileId}.pdf`);
 
-  const idToken = await currentUser.getIdToken();
+  // Get a short-lived signed download URL (includes auth token in query string)
+  const storageUrl = await getDownloadURL(fileRef);
 
-  const url = `/api/pdf?uid=${encodeURIComponent(uid)}&fileId=${encodeURIComponent(fileId)}`;
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${idToken}` },
-  });
+  // Proxy through our server route to avoid browser CORS restrictions
+  const proxyUrl = `/api/pdf?storageUrl=${encodeURIComponent(storageUrl)}`;
+  const response = await fetch(proxyUrl);
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({ error: response.statusText }));

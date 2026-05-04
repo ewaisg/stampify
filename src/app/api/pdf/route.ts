@@ -1,57 +1,50 @@
 import { NextRequest, NextResponse } from "next/server";
 
 // ---------------------------------------------------------------------------
-// GET /api/pdf?fileId=<id>
-// Header: Authorization: Bearer <firebase-id-token>
+// GET /api/pdf?storageUrl=<encoded-firebase-download-url>
 //
-// Server-side proxy: fetches the PDF from Firebase Storage using the user's
-// own Firebase ID token. This avoids CORS restrictions that block XHR/fetch
-// requests made directly from the browser to firebasestorage.googleapis.com.
+// Server-side proxy: fetches the PDF from the Firebase Storage download URL
+// on the server so the browser never touches firebasestorage.googleapis.com
+// directly. Firebase download URLs include an auth token in the query string
+// so no Authorization header is needed — the URL is already scoped.
+//
+// Security: only URLs pointing to firebasestorage.googleapis.com are allowed.
 // ---------------------------------------------------------------------------
+
+const ALLOWED_HOSTS = [
+  "firebasestorage.googleapis.com",
+  "storage.googleapis.com",
+];
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = request.nextUrl;
-    const fileId = searchParams.get("fileId");
-    const uid = searchParams.get("uid");
+    const storageUrl = request.nextUrl.searchParams.get("storageUrl");
 
-    if (!fileId || !uid) {
+    if (!storageUrl) {
       return NextResponse.json(
-        { error: "fileId and uid are required." },
+        { error: "storageUrl is required." },
         { status: 400 },
       );
     }
 
-    // Forward the caller's Firebase ID token so Storage rules can evaluate it
-    const authHeader = request.headers.get("Authorization") ?? "";
-    const idToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-    if (!idToken) {
-      return NextResponse.json(
-        { error: "Missing Authorization header." },
-        { status: 401 },
-      );
+    // Validate the URL points to Firebase Storage only
+    let parsed: URL;
+    try {
+      parsed = new URL(storageUrl);
+    } catch {
+      return NextResponse.json({ error: "Invalid URL." }, { status: 400 });
     }
 
-    const bucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
-    if (!bucket) {
-      return NextResponse.json(
-        { error: "Storage bucket not configured." },
-        { status: 500 },
-      );
+    if (!ALLOWED_HOSTS.includes(parsed.hostname)) {
+      return NextResponse.json({ error: "Forbidden host." }, { status: 403 });
     }
 
-    // Firebase Storage REST API: download object with auth token
-    const objectPath = encodeURIComponent(`users/${uid}/files/${fileId}.pdf`);
-    const storageUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${objectPath}?alt=media`;
-
-    const upstream = await fetch(storageUrl, {
-      headers: { Authorization: `Bearer ${idToken}` },
-    });
+    // Server-side fetch — no CORS restrictions apply here
+    const upstream = await fetch(storageUrl);
 
     if (!upstream.ok) {
-      const text = await upstream.text().catch(() => "");
       return NextResponse.json(
-        { error: `Storage returned ${upstream.status}: ${text}` },
+        { error: `Storage returned ${upstream.status}` },
         { status: upstream.status },
       );
     }
@@ -67,8 +60,10 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal server error.";
     console.error("[api/pdf] Error:", err);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to proxy PDF." },
+      { status: 500 },
+    );
   }
 }

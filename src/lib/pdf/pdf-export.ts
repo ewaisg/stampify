@@ -13,13 +13,28 @@ import { EXPORT_PIXEL_RATIO } from "@/config";
 // ---------------------------------------------------------------------------
 
 /**
- * Fetch a PDF file from a URL and return its bytes as an ArrayBuffer.
+ * Fetch a PDF file and return its bytes as an ArrayBuffer.
  *
- * Useful for re-hydrating a file buffer when the in-memory cache has been
- * evicted but a Firebase Storage URL is available.
+ * When given a Firebase Storage URL (firebasestorage.googleapis.com) the
+ * request is routed through /api/pdf to avoid browser CORS restrictions.
+ * All other URLs are fetched directly.
  */
 export async function fetchPdfBytes(url: string): Promise<ArrayBuffer> {
-  const response = await fetch(url);
+  let fetchUrl = url;
+
+  try {
+    const parsed = new URL(url);
+    if (
+      parsed.hostname === "firebasestorage.googleapis.com" ||
+      parsed.hostname === "storage.googleapis.com"
+    ) {
+      fetchUrl = `/api/pdf?storageUrl=${encodeURIComponent(url)}`;
+    }
+  } catch {
+    // not a valid URL — fall through to direct fetch
+  }
+
+  const response = await fetch(fetchUrl);
   if (!response.ok) {
     throw new Error(
       `Failed to fetch PDF: ${response.status} ${response.statusText}`,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Pencil, Trash2, Type, Image, Layers, Stamp } from "lucide-react";
+import { Plus, Pencil, Trash2, Type, Image, Layers, Stamp, Sparkles } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useStampsStore } from "@/stores/stamps";
@@ -23,6 +23,7 @@ import { TextStampForm } from "./text-stamp-form";
 import { ImageStampForm } from "./image-stamp-form";
 import { DynamicStampForm } from "./dynamic-stamp-form";
 import { PrepareStampForm } from "./prepare-stamp-form";
+import { AIPlacementDialog } from "./ai-placement-dialog";
 
 import type { Stamp as StampType, DynamicStamp, PreparedStamp } from "@/types/stampify";
 
@@ -32,6 +33,7 @@ import type { Stamp as StampType, DynamicStamp, PreparedStamp } from "@/types/st
 
 type CreateMode = "choose" | "text" | "image" | "dynamic";
 type EditMode = { kind: "prepare"; template: DynamicStamp | PreparedStamp };
+type AIMode = { stamp: StampType };
 
 // ---------------------------------------------------------------------------
 // Component
@@ -45,6 +47,7 @@ export function StampPanel() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createMode, setCreateMode] = useState<CreateMode>("choose");
   const [editDialog, setEditDialog] = useState<EditMode | null>(null);
+  const [aiDialog, setAIDialog] = useState<AIMode | null>(null);
 
   // ---- Create Dialog Handlers ----
 
@@ -170,6 +173,18 @@ export function StampPanel() {
                       <Pencil className="h-3 w-3" />
                     </Button>
                   )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 bg-background/80 text-primary backdrop-blur-sm hover:text-primary"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAIDialog({ stamp });
+                    }}
+                    title="Place with AI on all pages"
+                  >
+                    <Sparkles className="h-3 w-3" />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -301,6 +316,15 @@ export function StampPanel() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* ---- AI Placement Dialog ---- */}
+      <AIPlacementDialog
+        stamp={aiDialog?.stamp ?? null}
+        open={aiDialog !== null}
+        onOpenChange={(open) => {
+          if (!open) setAIDialog(null);
+        }}
+      />
 
       {/* ---- Prepare / Edit Dialog ---- */}
       <Dialog

@@ -26,7 +26,8 @@
       "Bash(git checkout *)",
       "Bash(curl *)",
       "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(k\\) for k in d.get\\('pages',{}\\).keys\\(\\)]\")",
-      "Bash(grep -v \"^$\")"
+      "Bash(grep -v \"^$\")",
+      "Bash(grep -v \"^$\\\\|^-\\\\|Execution\\\\|Failed to\\\\|Caused by\\\\|Debug info\")"
     ]
   }
 }

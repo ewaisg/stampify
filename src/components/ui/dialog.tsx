@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -64,8 +65,8 @@ function Dialog({
 // DialogTrigger
 // ---------------------------------------------------------------------------
 
-export interface DialogTriggerProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement> {}
+export type DialogTriggerProps =
+  React.ButtonHTMLAttributes<HTMLButtonElement>;
 
 const DialogTrigger = React.forwardRef<HTMLButtonElement, DialogTriggerProps>(
   ({ onClick, ...props }, ref) => {
@@ -90,8 +91,8 @@ DialogTrigger.displayName = "DialogTrigger";
 // DialogContent (overlay + centered panel)
 // ---------------------------------------------------------------------------
 
-export interface DialogContentProps
-  extends React.HTMLAttributes<HTMLDivElement> {}
+export type DialogContentProps =
+  React.HTMLAttributes<HTMLDivElement>;
 
 const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
   ({ className, children, ...props }, ref) => {
@@ -120,9 +121,9 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
       };
     }, [open]);
 
-    if (!open) return null;
+    if (!open || typeof document === "undefined") return null;
 
-    return (
+    return createPortal(
       <div className="fixed inset-0 z-50 flex items-center justify-center">
         {/* Backdrop */}
         <div
@@ -152,7 +153,8 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
             <span className="sr-only">Close</span>
           </button>
         </div>
-      </div>
+      </div>,
+      document.body,
     );
   },
 );
@@ -237,8 +239,8 @@ DialogDescription.displayName = "DialogDescription";
 // DialogClose
 // ---------------------------------------------------------------------------
 
-export interface DialogCloseProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement> {}
+export type DialogCloseProps =
+  React.ButtonHTMLAttributes<HTMLButtonElement>;
 
 const DialogClose = React.forwardRef<HTMLButtonElement, DialogCloseProps>(
   ({ onClick, ...props }, ref) => {

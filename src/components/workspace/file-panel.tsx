@@ -8,6 +8,7 @@ import {
   Trash2,
   Loader2,
   CloudUpload,
+  Eraser,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { useFilesStore, selectSelectedFiles } from "@/stores/files";
 import { useAppliedStampsStore } from "@/stores/applied-stamps";
 import { useStampsStore } from "@/stores/stamps";
+import { useUIStore } from "@/stores/ui";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
 import { MAX_FILE_SIZE_MB } from "@/config";
@@ -87,22 +89,33 @@ export function FilePanel({ className }: { className?: string }) {
   const stamps = useStampsStore((s) => s.stamps);
   const appliedStamps = useAppliedStampsStore((s) => s.appliedStamps);
   const clearFile = useAppliedStampsStore((s) => s.clearFile);
+  const setSelectedStampId = useUIStore((s) => s.setSelectedStampId);
 
   const selectedFiles = useMemo(
     () => selectSelectedFiles({ files, activeFileId, selectedFileIds, loading }),
     [files, activeFileId, selectedFileIds, loading],
   );
 
-  const hasStamps = stamps.length > 0;
   const hasFiles = files.length > 0;
   const hasSelection = selectedFileIds.size > 0;
   const allSelected = hasFiles && selectedFileIds.size === files.length;
+  const selectedAppliedStampCount = useMemo(
+    () =>
+      Array.from(selectedFileIds).reduce(
+        (total, fileId) => total + countStampsForFile(appliedStamps, fileId),
+        0,
+      ),
+    [appliedStamps, selectedFileIds],
+  );
+  const hasSelectedAppliedStamps = selectedAppliedStampCount > 0;
 
   // Local state
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [downloading, setDownloading] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmClearStamps, setConfirmClearStamps] = useState(false);
+  const [clearingStamps, setClearingStamps] = useState(false);
   /** Track which files are currently being uploaded to Storage. */
   const [uploadingFileIds, setUploadingFileIds] = useState<Set<string>>(
     new Set(),
@@ -361,6 +374,7 @@ export function FilePanel({ className }: { className?: string }) {
   const handleDeleteSelected = useCallback(async () => {
     if (!confirmDelete) {
       setConfirmDelete(true);
+      setConfirmClearStamps(false);
       return;
     }
 
@@ -424,10 +438,63 @@ export function FilePanel({ className }: { className?: string }) {
     setDeleting(false);
   }, [confirmDelete, selectedFileIds, removeFiles, clearFile, user]);
 
-  // Cancel delete confirmation when clicking elsewhere
+  // -----------------------------------------------------------------------
+  // Clear stamps from selected files
+  // -----------------------------------------------------------------------
+
+  const handleClearStampsSelected = useCallback(async () => {
+    if (!hasSelectedAppliedStamps || clearingStamps) return;
+
+    if (!confirmClearStamps) {
+      setConfirmClearStamps(true);
+      setConfirmDelete(false);
+      return;
+    }
+
+    const ids = Array.from(selectedFileIds).filter(
+      (fileId) => countStampsForFile(appliedStamps, fileId) > 0,
+    );
+    const clearedCount = ids.reduce(
+      (total, fileId) => total + countStampsForFile(appliedStamps, fileId),
+      0,
+    );
+
+    setClearingStamps(true);
+    setConfirmClearStamps(false);
+    setSelectedStampId(null);
+
+    for (const fileId of ids) {
+      clearFile(fileId);
+    }
+
+    toast({
+      title: "Stamps cleared",
+      description: `${clearedCount} stamp placement${clearedCount === 1 ? "" : "s"} removed.`,
+    });
+
+    if (user) {
+      await Promise.allSettled(
+        ids.map((fileId) => deleteAllAppliedStampsForFile(user.uid, fileId)),
+      );
+    }
+
+    setClearingStamps(false);
+  }, [
+    appliedStamps,
+    clearFile,
+    clearingStamps,
+    confirmClearStamps,
+    hasSelectedAppliedStamps,
+    selectedFileIds,
+    setSelectedStampId,
+    user,
+  ]);
+
+  // Cancel destructive confirmations when clicking elsewhere
   const handlePanelClick = useCallback(() => {
     if (confirmDelete) setConfirmDelete(false);
-  }, [confirmDelete]);
+    if (confirmClearStamps) setConfirmClearStamps(false);
+  }, [confirmClearStamps, confirmDelete]);
 
   // -----------------------------------------------------------------------
   // Toggle all selection
@@ -565,11 +632,11 @@ export function FilePanel({ className }: { className?: string }) {
           <Separator />
 
           {/* Actions footer */}
-          <div className="flex items-center gap-1.5 p-2">
+          <div className="grid gap-1.5 p-2">
             <Button
               variant="outline"
               size="sm"
-              className="flex-1"
+              className="w-full"
               onClick={handleDownload}
               disabled={!hasSelection || downloading}
             >
@@ -580,23 +647,43 @@ export function FilePanel({ className }: { className?: string }) {
               )}
               Download
             </Button>
-            <Button
-              variant={confirmDelete ? "destructive" : "outline"}
-              size="sm"
-              className="flex-1"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDeleteSelected();
-              }}
-              disabled={!hasSelection || deleting}
-            >
-              {deleting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Trash2 className="h-4 w-4" />
-              )}
-              {confirmDelete ? "Confirm?" : "Delete"}
-            </Button>
+            <div className="grid grid-cols-2 gap-1.5">
+              <Button
+                variant={confirmClearStamps ? "destructive" : "outline"}
+                size="sm"
+                className="min-w-0"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleClearStampsSelected();
+                }}
+                disabled={!hasSelectedAppliedStamps || clearingStamps}
+                title="Clear applied stamps from selected files"
+              >
+                {clearingStamps ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Eraser className="h-4 w-4" />
+                )}
+                {confirmClearStamps ? "Confirm" : "Clear"}
+              </Button>
+              <Button
+                variant={confirmDelete ? "destructive" : "outline"}
+                size="sm"
+                className="min-w-0"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteSelected();
+                }}
+                disabled={!hasSelection || deleting}
+              >
+                {deleting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+                {confirmDelete ? "Confirm" : "Delete"}
+              </Button>
+            </div>
           </div>
         </>
       ) : (

@@ -11,6 +11,16 @@ import type {
   BlendMode,
 } from "@/types/stampify";
 import { EXPORT_PIXEL_RATIO } from "@/config/constants";
+import {
+  drawCaliforniaStampOnCanvas,
+  getCaliforniaLogoSource,
+  isCaliforniaStamp,
+} from "@/lib/stamps/california";
+import {
+  drawCustomStampOnCanvas,
+  getCustomStampImageSources,
+  isCustomBlockStamp,
+} from "@/lib/stamps/custom-template";
 
 // ---------------------------------------------------------------------------
 // Image cache
@@ -257,8 +267,40 @@ async function drawDynamicStamp(
   width: number,
   height: number,
 ): Promise<void> {
+  if (stamp.type === "prepared" && isCaliforniaStamp(stamp)) {
+    const logoSource = getCaliforniaLogoSource(stamp, applied.data);
+    const logoImage = logoSource
+      ? await loadImage(logoSource).catch(() => null)
+      : null;
+
+    drawCaliforniaStampOnCanvas(ctx, stamp, width, height, {
+      data: applied.data,
+      logoImage,
+    });
+    return;
+  }
+
+  if (stamp.type === "prepared" && isCustomBlockStamp(stamp)) {
+    const imageMap = new Map<string, HTMLImageElement>();
+    const sources = getCustomStampImageSources(stamp, applied.data);
+
+    await Promise.all(
+      sources.map(async (source) => {
+        const image = await loadImage(source).catch(() => null);
+        if (image) imageMap.set(source, image);
+      }),
+    );
+
+    drawCustomStampOnCanvas(ctx, stamp, width, height, {
+      data: applied.data,
+      imageMap,
+    });
+    return;
+  }
+
   const { fields, backgroundColor } = stamp;
-  const data: Record<string, any> = applied.data ?? (stamp.type === "prepared" ? stamp.data : {});
+  const data: Record<string, unknown> =
+    applied.data ?? ("data" in stamp ? stamp.data : {});
   const borderWidth = 2;
   const padding = 8;
   const fieldFontSize = 13;
@@ -319,7 +361,7 @@ async function drawDynamicStamp(
         let formatted = "—";
         if (raw) {
           try {
-            const d = new Date(raw);
+            const d = new Date(raw as string | number | Date);
             formatted = d.toLocaleDateString();
           } catch {
             formatted = String(raw);
@@ -330,7 +372,9 @@ async function drawDynamicStamp(
         break;
       }
       case "image": {
-        const imgUrl: string | undefined = data[field.id] ?? field.storageUrl;
+        const rawUrl = data[field.id];
+        const imgUrl =
+          typeof rawUrl === "string" ? rawUrl : field.storageUrl;
         const imgSize = lineHeight - 4;
         if (imgUrl) {
           try {
@@ -398,20 +442,29 @@ export async function drawStampOnCanvas(
 ): Promise<void> {
   ctx.save();
 
-  // Move to the stamp's position on the page
-  ctx.translate(applied.x * zoom, applied.y * zoom);
-
   // Derive scale from how much the applied size differs from the base size
   const base = getStampBaseDimensions(stamp, applied);
   const scaleX = (applied.width / base.width) * zoom;
   const scaleY = (applied.height / base.height) * zoom;
+  const scale = Math.min(scaleX, scaleY);
+  const appliedWidth = applied.width * zoom;
+  const appliedHeight = applied.height * zoom;
+  const renderedWidth = base.width * scale;
+  const renderedHeight = base.height * scale;
+
+  // Move to the stamp's position on the page.
+  ctx.translate(applied.x * zoom, applied.y * zoom);
 
   // Rotate around the stamp centre
-  ctx.translate((applied.width * zoom) / 2, (applied.height * zoom) / 2);
+  ctx.translate(appliedWidth / 2, appliedHeight / 2);
   ctx.rotate((applied.rotation * Math.PI) / 180);
-  ctx.translate(-(applied.width * zoom) / 2, -(applied.height * zoom) / 2);
+  ctx.translate(-appliedWidth / 2, -appliedHeight / 2);
 
-  ctx.scale(scaleX, scaleY);
+  ctx.translate(
+    (appliedWidth - renderedWidth) / 2,
+    (appliedHeight - renderedHeight) / 2,
+  );
+  ctx.scale(scale, scale);
 
   // The individual draw functions work in "base" coordinates (0,0 → base.width × base.height)
   switch (stamp.type) {

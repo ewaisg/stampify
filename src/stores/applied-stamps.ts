@@ -210,6 +210,7 @@ export const useAppliedStampsStore = create<
           page,
           baseWidth,
           baseHeight,
+          data: baseStamp.data ? { ...baseStamp.data } : undefined,
         };
 
         arr.push(duplicate);

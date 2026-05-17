@@ -28,6 +28,16 @@ import { useFilesStore } from "@/stores/files";
 import { useAppliedStampActions } from "@/hooks/use-applied-stamp-actions";
 import { MIN_ZOOM, MAX_ZOOM, ZOOM_INCREMENT, MIN_STAMP_SIZE } from "@/config";
 import type { AppliedStamp, Stamp } from "@/types/stampify";
+import {
+  drawCaliforniaStampOnCanvas,
+  getCaliforniaLogoSource,
+  isCaliforniaStamp,
+} from "@/lib/stamps/california";
+import {
+  drawCustomStampOnCanvas,
+  getCustomStampImageSources,
+  isCustomBlockStamp,
+} from "@/lib/stamps/custom-template";
 
 // ---------------------------------------------------------------------------
 // PDF.js worker — served from /public so it is always available, no CDN dep
@@ -39,7 +49,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 // Constants
 // ---------------------------------------------------------------------------
 
-const HANDLE_SIZE = 8;
+const HANDLE_SIZE = 10;
 const PDF_RENDER_SCALE = 2;
 
 // ---------------------------------------------------------------------------
@@ -52,11 +62,17 @@ function drawStampOnCanvas(
   applied: AppliedStamp,
   zoom: number,
   isSelected: boolean,
+  californiaLogoImages?: Map<string, HTMLImageElement>,
 ) {
   const x = applied.x * zoom;
   const y = applied.y * zoom;
   const w = applied.width * zoom;
   const h = applied.height * zoom;
+  const baseWidth = applied.baseWidth || stamp.width;
+  const baseHeight = applied.baseHeight || stamp.height;
+  const scale = Math.min(w / baseWidth, h / baseHeight);
+  const renderedWidth = baseWidth * scale;
+  const renderedHeight = baseHeight * scale;
 
   ctx.save();
 
@@ -68,7 +84,28 @@ function drawStampOnCanvas(
     ctx.translate(-cx, -cy);
   }
 
-  if (stamp.type === "text") {
+  ctx.translate(
+    x + (w - renderedWidth) / 2,
+    y + (h - renderedHeight) / 2,
+  );
+  ctx.scale(scale, scale);
+
+  if (stamp.type === "prepared" && isCaliforniaStamp(stamp)) {
+    const logoSource = getCaliforniaLogoSource(stamp, applied.data);
+    const logoImage = logoSource
+      ? californiaLogoImages?.get(logoSource)
+      : null;
+
+    drawCaliforniaStampOnCanvas(ctx, stamp, baseWidth, baseHeight, {
+      data: applied.data,
+      logoImage,
+    });
+  } else if (stamp.type === "prepared" && isCustomBlockStamp(stamp)) {
+    drawCustomStampOnCanvas(ctx, stamp, baseWidth, baseHeight, {
+      data: applied.data,
+      imageMap: californiaLogoImages,
+    });
+  } else if (stamp.type === "text") {
     ctx.globalAlpha = stamp.opacity / 100;
 
     if (
@@ -76,68 +113,71 @@ function drawStampOnCanvas(
       stamp.template === "text_with_date_and_border"
     ) {
       ctx.strokeStyle = stamp.lineColor;
-      ctx.lineWidth = 2 * zoom;
-      ctx.strokeRect(x, y, w, h);
+      ctx.lineWidth = 2;
+      ctx.strokeRect(0, 0, baseWidth, baseHeight);
     } else if (stamp.template === "text_with_rounded_border") {
       ctx.strokeStyle = stamp.lineColor;
-      ctx.lineWidth = 2 * zoom;
-      const r = 6 * zoom;
+      ctx.lineWidth = 2;
+      const r = 6;
       ctx.beginPath();
-      ctx.moveTo(x + r, y);
-      ctx.lineTo(x + w - r, y);
-      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-      ctx.lineTo(x + w, y + h - r);
-      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-      ctx.lineTo(x + r, y + h);
-      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-      ctx.lineTo(x, y + r);
-      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.moveTo(r, 0);
+      ctx.lineTo(baseWidth - r, 0);
+      ctx.quadraticCurveTo(baseWidth, 0, baseWidth, r);
+      ctx.lineTo(baseWidth, baseHeight - r);
+      ctx.quadraticCurveTo(baseWidth, baseHeight, baseWidth - r, baseHeight);
+      ctx.lineTo(r, baseHeight);
+      ctx.quadraticCurveTo(0, baseHeight, 0, baseHeight - r);
+      ctx.lineTo(0, r);
+      ctx.quadraticCurveTo(0, 0, r, 0);
       ctx.closePath();
       ctx.stroke();
     }
 
     ctx.fillStyle = stamp.fontColor;
-    ctx.font = `bold ${stamp.fontSize * zoom}px sans-serif`;
+    ctx.font = `bold ${stamp.fontSize}px sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(stamp.text, x + w / 2, y + h / 2, w - 8 * zoom);
+    ctx.fillText(stamp.text, baseWidth / 2, baseHeight / 2, baseWidth - 8);
     ctx.globalAlpha = 1;
   } else if (stamp.type === "dynamic" || stamp.type === "prepared") {
     ctx.fillStyle = stamp.backgroundColor || "#f0f0f0";
     ctx.globalAlpha = 0.9;
-    ctx.fillRect(x, y, w, h);
+    ctx.fillRect(0, 0, baseWidth, baseHeight);
     ctx.globalAlpha = 1;
     ctx.strokeStyle = "#666";
-    ctx.lineWidth = 1 * zoom;
-    ctx.strokeRect(x, y, w, h);
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0, 0, baseWidth, baseHeight);
 
     const data = applied.data ?? {};
     const fields = stamp.fields;
-    const lineHeight = Math.min(h / Math.max(fields.length, 1), 20 * zoom);
+    const lineHeight = Math.min(baseHeight / Math.max(fields.length, 1), 20);
     ctx.fillStyle = "#333";
-    ctx.font = `${12 * zoom}px sans-serif`;
+    ctx.font = "12px sans-serif";
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
 
     fields.forEach((field, i) => {
       let displayText = field.label + ": ";
       displayText += field.type === "staticText" ? field.value : (data[field.id] ?? "");
-      ctx.fillText(displayText, x + 4 * zoom, y + 4 * zoom + i * lineHeight, w - 8 * zoom);
+      ctx.fillText(displayText, 4, 4 + i * lineHeight, baseWidth - 8);
     });
   } else if (stamp.type === "image") {
     ctx.fillStyle = "#e0e0e0";
-    ctx.fillRect(x, y, w, h);
+    ctx.fillRect(0, 0, baseWidth, baseHeight);
     ctx.strokeStyle = "#999";
-    ctx.lineWidth = 1 * zoom;
-    ctx.strokeRect(x, y, w, h);
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0, 0, baseWidth, baseHeight);
     ctx.fillStyle = "#999";
-    ctx.font = `${11 * zoom}px sans-serif`;
+    ctx.font = "11px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("[Image]", x + w / 2, y + h / 2);
+    ctx.fillText("[Image]", baseWidth / 2, baseHeight / 2);
   }
 
+  ctx.restore();
+
   if (isSelected) {
+    ctx.save();
     ctx.strokeStyle = "#2563eb";
     ctx.lineWidth = 2;
     ctx.setLineDash([4, 4]);
@@ -145,6 +185,8 @@ function drawStampOnCanvas(
     ctx.setLineDash([]);
 
     ctx.fillStyle = "#2563eb";
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 1;
     for (const [hx, hy] of [
       [x - HANDLE_SIZE / 2, y - HANDLE_SIZE / 2],
       [x + w - HANDLE_SIZE / 2, y - HANDLE_SIZE / 2],
@@ -152,10 +194,10 @@ function drawStampOnCanvas(
       [x + w - HANDLE_SIZE / 2, y + h - HANDLE_SIZE / 2],
     ]) {
       ctx.fillRect(hx, hy, HANDLE_SIZE, HANDLE_SIZE);
+      ctx.strokeRect(hx, hy, HANDLE_SIZE, HANDLE_SIZE);
     }
+    ctx.restore();
   }
-
-  ctx.restore();
 }
 
 function hitTestHandle(px: number, py: number, applied: AppliedStamp, zoom: number): number {
@@ -182,6 +224,93 @@ function hitTestStamp(px: number, py: number, applied: AppliedStamp, zoom: numbe
     py >= applied.y * zoom &&
     py <= (applied.y + applied.height) * zoom
   );
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), Math.max(min, max));
+}
+
+function cursorForHandle(handleIdx: number): string {
+  return handleIdx === 0 || handleIdx === 3 ? "nwse-resize" : "nesw-resize";
+}
+
+function getAppliedAspectRatio(applied: AppliedStamp): number {
+  const width = applied.baseWidth || applied.width;
+  const height = applied.baseHeight || applied.height;
+  return width > 0 && height > 0 ? width / height : 1;
+}
+
+function resizeWithAspectRatio(
+  origin: { x: number; y: number; width: number; height: number },
+  handleIdx: number,
+  dx: number,
+  dy: number,
+  aspectRatio: number,
+  pageSize: { width: number; height: number },
+): { x: number; y: number; width: number; height: number } {
+  const right = origin.x + origin.width;
+  const bottom = origin.y + origin.height;
+  const ratioHeight = origin.width / aspectRatio;
+
+  const proposedWidth =
+    handleIdx === 0 || handleIdx === 2
+      ? origin.width - dx
+      : origin.width + dx;
+  const proposedHeight =
+    handleIdx === 0 || handleIdx === 1
+      ? origin.height - dy
+      : origin.height + dy;
+
+  const widthScale = proposedWidth / origin.width;
+  const heightScale = proposedHeight / origin.height;
+  let scale =
+    Math.abs(widthScale - 1) > Math.abs(heightScale - 1)
+      ? widthScale
+      : heightScale;
+
+  const minScale = Math.max(
+    MIN_STAMP_SIZE / origin.width,
+    MIN_STAMP_SIZE / ratioHeight,
+  );
+
+  let maxScale = Number.POSITIVE_INFINITY;
+  if (handleIdx === 0) {
+    maxScale = Math.min(right / origin.width, bottom / ratioHeight);
+  } else if (handleIdx === 1) {
+    maxScale = Math.min(
+      (pageSize.width - origin.x) / origin.width,
+      bottom / ratioHeight,
+    );
+  } else if (handleIdx === 2) {
+    maxScale = Math.min(
+      right / origin.width,
+      (pageSize.height - origin.y) / ratioHeight,
+    );
+  } else {
+    maxScale = Math.min(
+      (pageSize.width - origin.x) / origin.width,
+      (pageSize.height - origin.y) / ratioHeight,
+    );
+  }
+
+  scale = clamp(scale, minScale, maxScale);
+
+  const width = origin.width * scale;
+  const height = ratioHeight * scale;
+
+  let x = origin.x;
+  let y = origin.y;
+
+  if (handleIdx === 0) {
+    x = right - width;
+    y = bottom - height;
+  } else if (handleIdx === 1) {
+    y = bottom - height;
+  } else if (handleIdx === 2) {
+    x = right - width;
+  }
+
+  return { x, y, width, height };
 }
 
 // ---------------------------------------------------------------------------
@@ -218,12 +347,15 @@ export function PdfCanvas({ pdfData, fetching = false }: PdfCanvasProps) {
 
   const [dragging, setDragging] = useState(false);
   const [resizing, setResizing] = useState(-1);
+  const [overlayCursor, setOverlayCursor] = useState("default");
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [dragStampOrigin, setDragStampOrigin] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
 
   const pdfCanvasRef = useRef<HTMLCanvasElement>(null);
   const stampCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const californiaLogoImagesRef = useRef(new Map<string, HTMLImageElement>());
+  const [californiaLogoVersion, setCaliforniaLogoVersion] = useState(0);
 
   const fileId = activeFileId ?? "";
   const stampsOnPage = useMemo(() => {
@@ -236,9 +368,58 @@ export function PdfCanvas({ pdfData, fetching = false }: PdfCanvasProps) {
     [stampsOnPage, selectedStampId],
   );
 
+  const selectedStampDefinition = useMemo(
+    () => stamps.find((stamp) => stamp.id === selectedApplied?.stampId) ?? null,
+    [selectedApplied, stamps],
+  );
+
+  const californiaLogoSources = useMemo(() => {
+    const sources = new Set<string>();
+
+    for (const applied of stampsOnPage) {
+      const stampDef = stamps.find((s) => s.id === applied.stampId);
+      if (stampDef?.type === "prepared" && isCaliforniaStamp(stampDef)) {
+        const logoSource = getCaliforniaLogoSource(stampDef, applied.data);
+        if (logoSource) sources.add(logoSource);
+      }
+      if (stampDef?.type === "prepared" && isCustomBlockStamp(stampDef)) {
+        for (const source of getCustomStampImageSources(stampDef, applied.data)) {
+          sources.add(source);
+        }
+      }
+    }
+
+    return [...sources];
+  }, [stampsOnPage, stamps]);
+
   useEffect(() => {
     setTotalPages(pageCount);
   }, [pageCount, setTotalPages]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    for (const source of californiaLogoSources) {
+      if (californiaLogoImagesRef.current.has(source)) continue;
+
+      const image = new Image();
+      image.onload = () => {
+        if (cancelled) return;
+        californiaLogoImagesRef.current.set(source, image);
+        setCaliforniaLogoVersion((version) => version + 1);
+      };
+      image.onerror = () => {
+        if (cancelled) return;
+        californiaLogoImagesRef.current.set(source, image);
+        setCaliforniaLogoVersion((version) => version + 1);
+      };
+      image.src = source;
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [californiaLogoSources]);
 
   // -----------------------------------------------------------------------
   // Load PDF document
@@ -246,16 +427,20 @@ export function PdfCanvas({ pdfData, fetching = false }: PdfCanvasProps) {
 
   useEffect(() => {
     if (!pdfData) {
-      setPdfDoc(null);
-      setPageCount(0);
-      setError(null);
+      React.startTransition(() => {
+        setPdfDoc(null);
+        setPageCount(0);
+        setError(null);
+      });
       return;
     }
 
     let cancelled = false;
-    setPdfLoading(true);
-    setError(null);
-    setPdfDoc(null);
+    React.startTransition(() => {
+      setPdfLoading(true);
+      setError(null);
+      setPdfDoc(null);
+    });
 
     const loadTask = pdfjsLib.getDocument({ data: pdfData.slice(0) });
 
@@ -328,6 +513,7 @@ export function PdfCanvas({ pdfData, fetching = false }: PdfCanvasProps) {
   const renderStampOverlay = useCallback(() => {
     const canvas = stampCanvasRef.current;
     if (!canvas) return;
+    void californiaLogoVersion;
 
     const displayWidth = pageSize.width * zoom;
     const displayHeight = pageSize.height * zoom;
@@ -344,9 +530,23 @@ export function PdfCanvas({ pdfData, fetching = false }: PdfCanvasProps) {
     for (const applied of stampsOnPage) {
       const stampDef = stamps.find((s) => s.id === applied.stampId);
       if (!stampDef) continue;
-      drawStampOnCanvas(ctx, stampDef, applied, zoom, applied.id === selectedStampId);
+      drawStampOnCanvas(
+        ctx,
+        stampDef,
+        applied,
+        zoom,
+        applied.id === selectedStampId,
+        californiaLogoImagesRef.current,
+      );
     }
-  }, [stampsOnPage, stamps, zoom, selectedStampId, pageSize]);
+  }, [
+    californiaLogoVersion,
+    stampsOnPage,
+    stamps,
+    zoom,
+    selectedStampId,
+    pageSize,
+  ]);
 
   useEffect(() => {
     renderStampOverlay();
@@ -356,22 +556,25 @@ export function PdfCanvas({ pdfData, fetching = false }: PdfCanvasProps) {
   // Mouse handlers
   // -----------------------------------------------------------------------
 
-  const getCanvasCoords = useCallback((e: React.MouseEvent) => {
+  const getCanvasCoords = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = stampCanvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   }, []);
 
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
       if (!fileId) return;
+      e.preventDefault();
       const { x, y } = getCanvasCoords(e);
 
       if (selectedApplied) {
         const handleIdx = hitTestHandle(x, y, selectedApplied, zoom);
         if (handleIdx >= 0) {
+          e.currentTarget.setPointerCapture(e.pointerId);
           setResizing(handleIdx);
+          setOverlayCursor(cursorForHandle(handleIdx));
           setDragStart({ x, y });
           setDragStampOrigin({ x: selectedApplied.x, y: selectedApplied.y, width: selectedApplied.width, height: selectedApplied.height });
           return;
@@ -381,8 +584,10 @@ export function PdfCanvas({ pdfData, fetching = false }: PdfCanvasProps) {
       for (let i = stampsOnPage.length - 1; i >= 0; i--) {
         const applied = stampsOnPage[i];
         if (hitTestStamp(x, y, applied, zoom)) {
+          e.currentTarget.setPointerCapture(e.pointerId);
           setSelectedStampId(applied.id);
           setDragging(true);
+          setOverlayCursor("grabbing");
           setDragStart({ x, y });
           setDragStampOrigin({ x: applied.x, y: applied.y, width: applied.width, height: applied.height });
           return;
@@ -390,15 +595,33 @@ export function PdfCanvas({ pdfData, fetching = false }: PdfCanvasProps) {
       }
 
       setSelectedStampId(null);
+      setOverlayCursor("default");
     },
-    [fileId, getCanvasCoords, selectedApplied, stampsOnPage, zoom],
+    [fileId, getCanvasCoords, selectedApplied, setSelectedStampId, stampsOnPage, zoom],
   );
 
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent) => {
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      const { x, y } = getCanvasCoords(e);
+
+      if (!dragging && resizing < 0) {
+        if (selectedApplied) {
+          const handleIdx = hitTestHandle(x, y, selectedApplied, zoom);
+          if (handleIdx >= 0) {
+            setOverlayCursor(cursorForHandle(handleIdx));
+            return;
+          }
+        }
+
+        const isOverStamp = stampsOnPage.some((applied) =>
+          hitTestStamp(x, y, applied, zoom),
+        );
+        setOverlayCursor(isOverStamp ? "move" : "default");
+        return;
+      }
+
       if (!fileId || !dragStart || !dragStampOrigin || !selectedStampId) return;
 
-      const { x, y } = getCanvasCoords(e);
       const dx = (x - dragStart.x) / zoom;
       const dy = (y - dragStart.y) / zoom;
       const applied = stampsOnPage.find((s) => s.id === selectedStampId);
@@ -407,41 +630,67 @@ export function PdfCanvas({ pdfData, fetching = false }: PdfCanvasProps) {
       if (dragging) {
         updateAppliedStamp(fileId, currentPage, {
           ...applied,
-          x: Math.max(0, dragStampOrigin.x + dx),
-          y: Math.max(0, dragStampOrigin.y + dy),
+          x: clamp(dragStampOrigin.x + dx, 0, pageSize.width - applied.width),
+          y: clamp(dragStampOrigin.y + dy, 0, pageSize.height - applied.height),
         });
       } else if (resizing >= 0) {
-        let newX = dragStampOrigin.x;
-        let newY = dragStampOrigin.y;
-        let newW = dragStampOrigin.width;
-        let newH = dragStampOrigin.height;
+        const resized = resizeWithAspectRatio(
+          dragStampOrigin,
+          resizing,
+          dx,
+          dy,
+          getAppliedAspectRatio(applied),
+          pageSize,
+        );
 
-        if (resizing === 0) { newX += dx; newY += dy; newW -= dx; newH -= dy; }
-        else if (resizing === 1) { newY += dy; newW += dx; newH -= dy; }
-        else if (resizing === 2) { newX += dx; newW -= dx; newH += dy; }
-        else if (resizing === 3) { newW += dx; newH += dy; }
-
-        if (newW < MIN_STAMP_SIZE) {
-          newW = MIN_STAMP_SIZE;
-          if (resizing === 0 || resizing === 2) newX = dragStampOrigin.x + dragStampOrigin.width - MIN_STAMP_SIZE;
-        }
-        if (newH < MIN_STAMP_SIZE) {
-          newH = MIN_STAMP_SIZE;
-          if (resizing === 0 || resizing === 1) newY = dragStampOrigin.y + dragStampOrigin.height - MIN_STAMP_SIZE;
-        }
-
-        updateAppliedStamp(fileId, currentPage, { ...applied, x: Math.max(0, newX), y: Math.max(0, newY), width: newW, height: newH });
+        updateAppliedStamp(fileId, currentPage, {
+          ...applied,
+          x: resized.x,
+          y: resized.y,
+          width: resized.width,
+          height: resized.height,
+        });
       }
     },
-    [fileId, dragStart, dragStampOrigin, selectedStampId, dragging, resizing, getCanvasCoords, zoom, stampsOnPage, updateAppliedStamp, currentPage],
+    [
+      currentPage,
+      dragStart,
+      dragStampOrigin,
+      dragging,
+      fileId,
+      getCanvasCoords,
+      pageSize,
+      resizing,
+      selectedApplied,
+      selectedStampId,
+      stampsOnPage,
+      updateAppliedStamp,
+      zoom,
+    ],
   );
 
-  const handleMouseUp = useCallback(() => {
+  const handlePointerEnd = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+
     setDragging(false);
     setResizing(-1);
     setDragStart(null);
     setDragStampOrigin(null);
-  }, []);
+
+    const { x, y } = getCanvasCoords(e);
+    const isOverStamp = stampsOnPage.some((applied) =>
+      hitTestStamp(x, y, applied, zoom),
+    );
+    setOverlayCursor(isOverStamp ? "move" : "default");
+  }, [getCanvasCoords, stampsOnPage, zoom]);
+
+  const handlePointerLeave = useCallback(() => {
+    if (!dragging && resizing < 0) {
+      setOverlayCursor("default");
+    }
+  }, [dragging, resizing]);
 
   // -----------------------------------------------------------------------
   // Drop zone
@@ -494,20 +743,43 @@ export function PdfCanvas({ pdfData, fetching = false }: PdfCanvasProps) {
     if (!fileId || !selectedStampId) return;
     deleteAppliedStamp(fileId, currentPage, selectedStampId);
     setSelectedStampId(null);
-  }, [fileId, selectedStampId, currentPage, deleteAppliedStamp]);
+  }, [fileId, selectedStampId, currentPage, deleteAppliedStamp, setSelectedStampId]);
 
   const handleDuplicateToAll = useCallback(() => {
     if (!fileId || !selectedApplied || pageCount === 0) return;
     duplicateToAllPages(fileId, selectedApplied, pageCount);
   }, [fileId, selectedApplied, pageCount, duplicateToAllPages]);
 
+  const selectMatchingStampOnPage = useCallback(
+    (page: number) => {
+      if (!fileId || !selectedApplied) {
+        setSelectedStampId(null);
+        return;
+      }
+
+      const pageStamps = selectStampsForPage({ appliedStamps }, fileId, page);
+      const matchingStamp = pageStamps.find(
+        (applied) => applied.stampId === selectedApplied.stampId,
+      );
+
+      setSelectedStampId(matchingStamp?.id ?? null);
+    },
+    [appliedStamps, fileId, selectedApplied, setSelectedStampId],
+  );
+
   const handlePrevPage = useCallback(() => {
-    if (currentPage > 1) { setCurrentPage(currentPage - 1); setSelectedStampId(null); }
-  }, [currentPage, setCurrentPage]);
+    if (currentPage <= 1) return;
+    const previousPage = currentPage - 1;
+    setCurrentPage(previousPage);
+    selectMatchingStampOnPage(previousPage);
+  }, [currentPage, selectMatchingStampOnPage, setCurrentPage]);
 
   const handleNextPage = useCallback(() => {
-    if (currentPage < pageCount) { setCurrentPage(currentPage + 1); setSelectedStampId(null); }
-  }, [currentPage, pageCount, setCurrentPage]);
+    if (currentPage >= pageCount) return;
+    const nextPage = currentPage + 1;
+    setCurrentPage(nextPage);
+    selectMatchingStampOnPage(nextPage);
+  }, [currentPage, pageCount, selectMatchingStampOnPage, setCurrentPage]);
 
   const handleZoomIn = useCallback(() => setZoom(Math.min(MAX_ZOOM, zoom + ZOOM_INCREMENT)), [zoom, setZoom]);
   const handleZoomOut = useCallback(() => setZoom(Math.max(MIN_ZOOM, zoom - ZOOM_INCREMENT)), [zoom, setZoom]);
@@ -533,6 +805,21 @@ export function PdfCanvas({ pdfData, fetching = false }: PdfCanvasProps) {
           <Button variant="ghost" size="icon" onClick={handleNextPage} disabled={currentPage >= pageCount} aria-label="Next page">
             <ChevronRight className="h-4 w-4" />
           </Button>
+        </div>
+
+        <div className="hidden min-w-0 flex-1 justify-center px-2 lg:flex">
+          <span
+            className="max-w-[22rem] truncate rounded border bg-background px-2 py-1 text-xs text-muted-foreground"
+            title={
+              selectedStampDefinition
+                ? selectedStampDefinition.name
+                : `${stampsOnPage.length} stamp${stampsOnPage.length === 1 ? "" : "s"} on this page`
+            }
+          >
+            {selectedStampDefinition
+              ? selectedStampDefinition.name
+              : `${stampsOnPage.length} stamp${stampsOnPage.length === 1 ? "" : "s"}`}
+          </span>
         </div>
 
         <div className="flex items-center gap-1">
@@ -614,12 +901,17 @@ export function PdfCanvas({ pdfData, fetching = false }: PdfCanvasProps) {
               style={{
                 width: `${pageSize.width * zoom}px`,
                 height: `${pageSize.height * zoom}px`,
-                cursor: dragging ? "grabbing" : resizing >= 0 ? "nwse-resize" : "default",
+                cursor: dragging
+                  ? "grabbing"
+                  : resizing >= 0
+                    ? cursorForHandle(resizing)
+                    : overlayCursor,
               }}
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseUp}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerEnd}
+              onPointerCancel={handlePointerEnd}
+              onPointerLeave={handlePointerLeave}
             />
           </div>
         )}

@@ -1,9 +1,17 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Pencil, Trash2, Type, Image, Layers, Stamp, Sparkles } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Type,
+  Image as ImageIcon,
+  Layers,
+  Stamp,
+  Sparkles,
+} from "lucide-react";
 
-import { cn } from "@/lib/utils";
 import { useStampsStore } from "@/stores/stamps";
 import { useStampActions } from "@/hooks/use-stamp-actions";
 import { toast } from "@/hooks/use-toast";
@@ -21,9 +29,15 @@ import {
 import { StampPreview } from "./stamp-preview";
 import { TextStampForm } from "./text-stamp-form";
 import { ImageStampForm } from "./image-stamp-form";
-import { DynamicStampForm } from "./dynamic-stamp-form";
 import { PrepareStampForm } from "./prepare-stamp-form";
 import { AIPlacementDialog } from "./ai-placement-dialog";
+import { CustomStampBuilderForm } from "./custom-stamp-builder-form";
+import {
+  getCustomStampState,
+  isCustomBlockStamp,
+  resolveCustomStampData,
+} from "@/lib/stamps/custom-template";
+import { isCaliforniaStamp } from "@/lib/stamps/california";
 
 import type { Stamp as StampType, DynamicStamp, PreparedStamp } from "@/types/stampify";
 
@@ -31,8 +45,10 @@ import type { Stamp as StampType, DynamicStamp, PreparedStamp } from "@/types/st
 // Types
 // ---------------------------------------------------------------------------
 
-type CreateMode = "choose" | "text" | "image" | "dynamic";
-type EditMode = { kind: "prepare"; template: DynamicStamp | PreparedStamp };
+type CreateMode = "choose" | "text" | "image" | "builder";
+type EditMode =
+  | { kind: "prepare"; template: DynamicStamp | PreparedStamp }
+  | { kind: "builder"; template: PreparedStamp };
 type AIMode = { stamp: StampType };
 
 // ---------------------------------------------------------------------------
@@ -41,13 +57,27 @@ type AIMode = { stamp: StampType };
 
 export function StampPanel() {
   const stamps = useStampsStore((s) => s.stamps);
-  const { removeStamp, editStamp } = useStampActions();
+  const { removeStamp } = useStampActions();
 
   // Dialog state
   const [createOpen, setCreateOpen] = useState(false);
   const [createMode, setCreateMode] = useState<CreateMode>("choose");
   const [editDialog, setEditDialog] = useState<EditMode | null>(null);
   const [aiDialog, setAIDialog] = useState<AIMode | null>(null);
+  const groupedStamps = useMemo(() => {
+    const groups = new Map<string, StampType[]>();
+
+    for (const stamp of stamps) {
+      const group = getStampCollectionName(stamp);
+      groups.set(group, [...(groups.get(group) ?? []), stamp]);
+    }
+
+    return [...groups.entries()].sort(([a], [b]) => {
+      if (a === "General") return 1;
+      if (b === "General") return -1;
+      return a.localeCompare(b);
+    });
+  }, [stamps]);
 
   // ---- Create Dialog Handlers ----
 
@@ -64,6 +94,11 @@ export function StampPanel() {
   // ---- Edit / Prepare ----
 
   function handlePrepare(stamp: DynamicStamp | PreparedStamp) {
+    if (stamp.type === "prepared" && isCustomBlockStamp(stamp)) {
+      setEditDialog({ kind: "builder", template: stamp });
+      return;
+    }
+
     setEditDialog({ kind: "prepare", template: stamp });
   }
 
@@ -90,6 +125,10 @@ export function StampPanel() {
   // ---- Helpers ----
 
   function stampTypeBadge(stamp: StampType) {
+    if (isCustomBlockStamp(stamp)) {
+      return <Badge variant="outline" className="text-[10px]">Template</Badge>;
+    }
+
     switch (stamp.type) {
       case "text":
         return <Badge variant="secondary" className="text-[10px]">Text</Badge>;
@@ -100,6 +139,18 @@ export function StampPanel() {
       case "prepared":
         return <Badge variant="outline" className="text-[10px]">Prepared</Badge>;
     }
+  }
+
+  function getStampCollectionName(stamp: StampType): string {
+    const customState = getCustomStampState(stamp);
+    if (customState) return customState;
+    if (isCaliforniaStamp(stamp)) return "California";
+    return "General";
+  }
+
+  function getStampSubtitle(stamp: StampType): string | null {
+    if (!isCustomBlockStamp(stamp)) return null;
+    return resolveCustomStampData(stamp).purpose;
   }
 
   // ---- Render ----
@@ -140,65 +191,89 @@ export function StampPanel() {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2">
-            {stamps.map((stamp) => (
-              <div
-                key={stamp.id}
-                draggable
-                onDragStart={(e) => handleDragStart(e, stamp)}
-                className="group relative flex cursor-grab flex-col items-center gap-1.5 rounded-lg border border-input bg-card p-2 transition-colors hover:border-primary/50 hover:bg-accent/50 active:cursor-grabbing"
-              >
-                {/* Preview thumbnail */}
-                <StampPreview stamp={stamp} className="h-16 w-full" />
-
-                {/* Name + badge */}
-                <div className="flex w-full items-center gap-1">
-                  {stampTypeBadge(stamp)}
-                  <span className="truncate text-xs font-medium">{stamp.name}</span>
+          <div className="space-y-4">
+            {groupedStamps.map(([group, groupStamps]) => (
+              <section key={group} className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-semibold uppercase text-muted-foreground">
+                    {group}
+                  </h3>
+                  <Badge variant="secondary" className="text-[10px]">
+                    {groupStamps.length}
+                  </Badge>
                 </div>
 
-                {/* Actions overlay */}
-                <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                  {(stamp.type === "dynamic" || stamp.type === "prepared") && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 bg-background/80 backdrop-blur-sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handlePrepare(stamp as DynamicStamp | PreparedStamp);
-                      }}
-                      title="Prepare / Edit values"
+                <div className="grid grid-cols-2 gap-2">
+                  {groupStamps.map((stamp) => (
+                    <div
+                      key={stamp.id}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, stamp)}
+                      className="group relative flex cursor-grab flex-col items-center gap-1.5 rounded-lg border border-input bg-card p-2 transition-colors hover:border-primary/50 hover:bg-accent/50 active:cursor-grabbing"
                     >
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 bg-background/80 text-primary backdrop-blur-sm hover:text-primary"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setAIDialog({ stamp });
-                    }}
-                    title="Place with AI on all pages"
-                  >
-                    <Sparkles className="h-3 w-3" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 bg-background/80 text-destructive backdrop-blur-sm hover:text-destructive"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete(stamp);
-                    }}
-                    title="Delete stamp"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
+                      <StampPreview stamp={stamp} className="h-16 w-full" />
+
+                      <div className="flex w-full items-center gap-1">
+                        {stampTypeBadge(stamp)}
+                        <span className="truncate text-xs font-medium">
+                          {stamp.name}
+                        </span>
+                      </div>
+
+                      {getStampSubtitle(stamp) && (
+                        <p className="w-full truncate text-[10px] text-muted-foreground">
+                          {getStampSubtitle(stamp)}
+                        </p>
+                      )}
+
+                      <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                        {(stamp.type === "dynamic" || stamp.type === "prepared") && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 bg-background/80 backdrop-blur-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handlePrepare(stamp as DynamicStamp | PreparedStamp);
+                            }}
+                            title={
+                              isCustomBlockStamp(stamp)
+                                ? "Edit template"
+                                : "Prepare / Edit values"
+                            }
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 bg-background/80 text-primary backdrop-blur-sm hover:text-primary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAIDialog({ stamp });
+                          }}
+                          title="Place with AI on all pages"
+                        >
+                          <Sparkles className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 bg-background/80 text-destructive backdrop-blur-sm hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(stamp);
+                          }}
+                          title="Delete stamp"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
+              </section>
             ))}
           </div>
         )}
@@ -206,13 +281,19 @@ export function StampPanel() {
 
       {/* ---- Create Stamp Dialog ---- */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
+        <DialogContent
+          className={
+            createMode === "builder"
+              ? "max-h-[88vh] overflow-y-auto overflow-x-hidden sm:max-w-4xl"
+              : "max-h-[85vh] overflow-y-auto sm:max-w-md"
+          }
+        >
           <DialogHeader>
             <DialogTitle>
               {createMode === "choose" && "Create Stamp"}
               {createMode === "text" && "New Text Stamp"}
               {createMode === "image" && "New Image Stamp"}
-              {createMode === "dynamic" && "New Dynamic Stamp"}
+              {createMode === "builder" && "State Stamp Builder"}
             </DialogTitle>
             <DialogDescription>
               {createMode === "choose"
@@ -245,7 +326,7 @@ export function StampPanel() {
                 onClick={() => setCreateMode("image")}
               >
                 <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10">
-                  <Image className="h-5 w-5 text-primary" />
+                  <ImageIcon className="h-5 w-5 text-primary" />
                 </div>
                 <div>
                   <p className="text-sm font-medium">Image Stamp</p>
@@ -258,18 +339,19 @@ export function StampPanel() {
               <button
                 type="button"
                 className="flex items-center gap-3 rounded-lg border border-input p-3 text-left transition-colors hover:bg-accent"
-                onClick={() => setCreateMode("dynamic")}
+                onClick={() => setCreateMode("builder")}
               >
                 <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10">
                   <Layers className="h-5 w-5 text-primary" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium">Dynamic Stamp</p>
+                  <p className="text-sm font-medium">State Stamp Builder</p>
                   <p className="text-xs text-muted-foreground">
-                    Design a template with configurable fields.
+                    Build reusable state templates from logo, text, date, and signature blocks.
                   </p>
                 </div>
               </button>
+
             </div>
           )}
 
@@ -301,7 +383,7 @@ export function StampPanel() {
             </>
           )}
 
-          {createMode === "dynamic" && (
+          {createMode === "builder" && (
             <>
               <Button
                 variant="ghost"
@@ -311,7 +393,7 @@ export function StampPanel() {
               >
                 &larr; Back
               </Button>
-              <DynamicStampForm onStampCreated={handleStampCreated} />
+              <CustomStampBuilderForm onComplete={handleStampCreated} />
             </>
           )}
         </DialogContent>
@@ -333,13 +415,21 @@ export function StampPanel() {
           if (!open) setEditDialog(null);
         }}
       >
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
+        <DialogContent
+          className={
+            editDialog?.kind === "builder"
+              ? "max-h-[88vh] overflow-y-auto overflow-x-hidden sm:max-w-4xl"
+              : "max-h-[85vh] overflow-y-auto sm:max-w-md"
+          }
+        >
           <DialogHeader>
             <DialogTitle>
-              {editDialog?.kind === "prepare" ? "Prepare Stamp" : "Edit Stamp"}
+              {editDialog?.kind === "builder" ? "Edit Template" : "Prepare Stamp"}
             </DialogTitle>
             <DialogDescription>
-              Fill in or update the field values for this stamp.
+              {editDialog?.kind === "builder"
+                ? "Update this saved state stamp template."
+                : "Fill in or update the field values for this stamp."}
             </DialogDescription>
           </DialogHeader>
 
@@ -347,6 +437,13 @@ export function StampPanel() {
             <PrepareStampForm
               template={editDialog.template}
               onStampPrepared={handlePrepared}
+            />
+          )}
+
+          {editDialog?.kind === "builder" && (
+            <CustomStampBuilderForm
+              stamp={editDialog.template}
+              onComplete={handlePrepared}
             />
           )}
         </DialogContent>

@@ -28,6 +28,13 @@ meant to make the next tasks easy to resume if the session gets interrupted.
   - Updated rendering/preview/export paths to draw builder stamps with
     transparent backgrounds.
   - Grouped the Stamp Library by state/collection.
+- [x] Started overall app experience cleanup:
+  - Delayed onboarding/empty-state decisions until workspace sync settles so
+    existing users do not briefly see first-run messaging.
+  - Moved theme and AI controls behind the main settings gear.
+  - Replaced the file delete two-click confirmation with a confirmation dialog.
+  - Added app-level navigation between Dashboard and Stamping Tool, including a
+    dashboard button inside the stamping toolbar.
 
 ## Current Focus
 
@@ -64,6 +71,19 @@ We are now working on the next three practical workflow improvements:
      step is to turn each numbered stamp from `stamps.pdf` into a named preset
      and then refine any layouts that need side-by-side logo/text behavior.
 
+5. [ ] Design completed-files dashboard and history.
+   - Goal: move finished/stamped PDFs out of the active file panel into a
+     history module so the app can show work-in-progress vs completed files.
+   - Proposed structure: main dashboard first, with navigation to the stamping
+     workspace; completed files grouped by state/collection and completion date.
+   - Track useful status fields: uploaded, stamping in progress, stamped,
+     downloaded, sent to Box, Box sync failed.
+   - Future Box integration: after export/mark complete, optionally send a copy
+     to Box and store the Box file/folder id on the completed-file record.
+   - Current status: an initial Dashboard screen exists with active workspace
+     file counts, template collections, and a completed-files placeholder.
+     Persistence for completed-file records is still pending.
+
 ## Resume Notes
 
 - Development server target: http://localhost:9002/
@@ -75,6 +95,11 @@ We are now working on the next three practical workflow improvements:
   - `src/lib/pdf/stamp-renderer.ts`
   - `src/lib/stamps/custom-template.ts`
   - `src/components/stamps/custom-stamp-builder-form.tsx`
+  - `src/components/workspace/header.tsx`
+  - `src/components/workspace/dashboard.tsx`
+  - `src/components/workspace/onboarding.tsx`
+  - `src/components/workspace/file-panel.tsx`
+  - `src/stores/ui.ts`
   - `tests/unit/california-stamps.test.ts`
   - `tests/unit/custom-template-stamps.test.ts`
 - Standard checks used so far:

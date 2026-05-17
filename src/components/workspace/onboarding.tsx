@@ -13,6 +13,7 @@ import {
 import { useStampsStore } from "@/stores/stamps";
 import { useFilesStore } from "@/stores/files";
 import { useUIStore } from "@/stores/ui";
+import { useAuth } from "@/contexts/AuthContext";
 
 const DISMISSED_KEY = "stampify:onboarding-dismissed";
 
@@ -39,20 +40,50 @@ const steps = [
 
 export function Onboarding() {
   const [dismissed, setDismissed] = useState(true); // default hidden to avoid flash
+  const [storageChecked, setStorageChecked] = useState(false);
+  const [syncReady, setSyncReady] = useState(false);
 
+  const { initializing } = useAuth();
   const stamps = useStampsStore((s) => s.stamps);
+  const stampsLoading = useStampsStore((s) => s.loading);
   const files = useFilesStore((s) => s.files);
+  const filesLoading = useFilesStore((s) => s.loading);
   const rightPanelOpen = useUIStore((s) => s.rightPanelOpen);
   const toggleRightPanel = useUIStore((s) => s.toggleRightPanel);
 
   // Check localStorage on mount
   useEffect(() => {
-    const stored = localStorage.getItem(DISMISSED_KEY);
-    setDismissed(stored === "true");
+    const id = window.setTimeout(() => {
+      const stored = localStorage.getItem(DISMISSED_KEY);
+      setDismissed(stored === "true");
+      setStorageChecked(true);
+    }, 0);
+
+    return () => window.clearTimeout(id);
   }, []);
 
+  useEffect(() => {
+    if (!storageChecked || initializing || stampsLoading || filesLoading) {
+      if (!syncReady) return;
+
+      const id = window.setTimeout(() => setSyncReady(false), 0);
+      return () => window.clearTimeout(id);
+    }
+
+    if (syncReady) {
+      return;
+    }
+
+    const id = window.setTimeout(() => setSyncReady(true), 250);
+    return () => window.clearTimeout(id);
+  }, [filesLoading, initializing, stampsLoading, storageChecked, syncReady]);
+
   const shouldShow =
-    !dismissed && stamps.length === 0 && files.length === 0;
+    storageChecked &&
+    syncReady &&
+    !dismissed &&
+    stamps.length === 0 &&
+    files.length === 0;
 
   const handleDismiss = useCallback(() => {
     localStorage.setItem(DISMISSED_KEY, "true");

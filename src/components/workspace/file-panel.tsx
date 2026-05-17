@@ -14,6 +14,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
@@ -112,7 +120,7 @@ export function FilePanel({ className }: { className?: string }) {
   // Local state
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [downloading, setDownloading] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmClearStamps, setConfirmClearStamps] = useState(false);
   const [clearingStamps, setClearingStamps] = useState(false);
@@ -372,15 +380,11 @@ export function FilePanel({ className }: { className?: string }) {
   // -----------------------------------------------------------------------
 
   const handleDeleteSelected = useCallback(async () => {
-    if (!confirmDelete) {
-      setConfirmDelete(true);
-      setConfirmClearStamps(false);
-      return;
-    }
-
     const ids = Array.from(selectedFileIds);
+    if (ids.length === 0) return;
+
     setDeleting(true);
-    setConfirmDelete(false);
+    setDeleteDialogOpen(false);
 
     // Clean up in-memory buffers and applied stamps (local)
     for (const id of ids) {
@@ -436,7 +440,7 @@ export function FilePanel({ className }: { className?: string }) {
     }
 
     setDeleting(false);
-  }, [confirmDelete, selectedFileIds, removeFiles, clearFile, user]);
+  }, [selectedFileIds, removeFiles, clearFile, user]);
 
   // -----------------------------------------------------------------------
   // Clear stamps from selected files
@@ -447,7 +451,6 @@ export function FilePanel({ className }: { className?: string }) {
 
     if (!confirmClearStamps) {
       setConfirmClearStamps(true);
-      setConfirmDelete(false);
       return;
     }
 
@@ -492,9 +495,8 @@ export function FilePanel({ className }: { className?: string }) {
 
   // Cancel destructive confirmations when clicking elsewhere
   const handlePanelClick = useCallback(() => {
-    if (confirmDelete) setConfirmDelete(false);
     if (confirmClearStamps) setConfirmClearStamps(false);
-  }, [confirmClearStamps, confirmDelete]);
+  }, [confirmClearStamps]);
 
   // -----------------------------------------------------------------------
   // Toggle all selection
@@ -513,10 +515,11 @@ export function FilePanel({ className }: { className?: string }) {
   // -----------------------------------------------------------------------
 
   return (
-    <div
-      className={cn("flex h-full flex-col border-r bg-card", className)}
-      onClick={handlePanelClick}
-    >
+    <>
+      <div
+        className={cn("flex h-full flex-col border-r bg-card", className)}
+        onClick={handlePanelClick}
+      >
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2">
         <h2 className="text-sm font-semibold">Files</h2>
@@ -667,12 +670,13 @@ export function FilePanel({ className }: { className?: string }) {
                 {confirmClearStamps ? "Confirm" : "Clear"}
               </Button>
               <Button
-                variant={confirmDelete ? "destructive" : "outline"}
+                variant="outline"
                 size="sm"
                 className="min-w-0"
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleDeleteSelected();
+                  setConfirmClearStamps(false);
+                  setDeleteDialogOpen(true);
                 }}
                 disabled={!hasSelection || deleting}
               >
@@ -681,7 +685,7 @@ export function FilePanel({ className }: { className?: string }) {
                 ) : (
                   <Trash2 className="h-4 w-4" />
                 )}
-                {confirmDelete ? "Confirm" : "Delete"}
+                Delete
               </Button>
             </div>
           </div>
@@ -702,6 +706,44 @@ export function FilePanel({ className }: { className?: string }) {
           </Button>
         </div>
       )}
-    </div>
+      </div>
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete selected files?</DialogTitle>
+            <DialogDescription>
+              This will remove {selectedFileIds.size} selected file
+              {selectedFileIds.size === 1 ? "" : "s"} and their applied stamp
+              placements from Stampify.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleDeleteSelected}
+              disabled={deleting}
+            >
+              {deleting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

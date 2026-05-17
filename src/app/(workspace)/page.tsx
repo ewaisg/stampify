@@ -6,12 +6,16 @@ import {
   PanelRightClose,
   PanelRightOpen,
   FileUp,
+  LayoutDashboard,
+  Loader2,
 } from "lucide-react";
 import { useUIStore } from "@/stores/ui";
 import { useFilesStore, selectActiveFile } from "@/stores/files";
+import { useStampsStore } from "@/stores/stamps";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { FilePanel } from "@/components/workspace/file-panel";
+import { Dashboard } from "@/components/workspace/dashboard";
 import { PdfCanvas } from "@/components/workspace/pdf-canvas";
 import { StampPanel } from "@/components/stamps/stamp-panel";
 import { Onboarding } from "@/components/workspace/onboarding";
@@ -22,13 +26,21 @@ import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { getFileBuffer, addFileBuffer } from "@/lib/pdf/file-manager";
 import { downloadPdfAsBuffer } from "@/lib/firebase/storage-service";
 import { useAuth } from "@/contexts/AuthContext";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 export default function WorkspacePage() {
   useFirestoreSync();
 
   const leftPanelOpen = useUIStore((s) => s.leftPanelOpen);
   const rightPanelOpen = useUIStore((s) => s.rightPanelOpen);
+  const workspaceView = useUIStore((s) => s.workspaceView);
+  const setWorkspaceView = useUIStore((s) => s.setWorkspaceView);
   const toggleLeftPanel = useUIStore((s) => s.toggleLeftPanel);
   const toggleRightPanel = useUIStore((s) => s.toggleRightPanel);
   const currentPage = useUIStore((s) => s.currentPage);
@@ -36,7 +48,10 @@ export default function WorkspacePage() {
   const selectedStampId = useUIStore((s) => s.selectedStampId);
   const setSelectedStampId = useUIStore((s) => s.setSelectedStampId);
   const activeFile = useFilesStore(selectActiveFile);
+  const activeWorkspaceFile = workspaceView === "stamping" ? activeFile : undefined;
   const activeFileId = useFilesStore((s) => s.activeFileId);
+  const filesLoading = useFilesStore((s) => s.loading);
+  const stampsLoading = useStampsStore((s) => s.loading);
 
   // Applied stamps Firestore sync & actions
   useAppliedStampsSync(activeFileId);
@@ -63,61 +78,82 @@ export default function WorkspacePage() {
     deselectStamp,
   });
 
-  const { user } = useAuth();
+  const { user, initializing } = useAuth();
   const [pdfData, setPdfData] = useState<ArrayBuffer | null>(null);
   const [pdfFetchError, setPdfFetchError] = useState<string | null>(null);
   const [pdfFetching, setPdfFetching] = useState(false);
+  const [workspaceDelayDone, setWorkspaceDelayDone] = useState(false);
   const loadingFileIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!activeFile) {
-      setPdfData(null);
-      setPdfFetchError(null);
-      setPdfFetching(false);
+    const id = window.setTimeout(() => setWorkspaceDelayDone(true), 350);
+    return () => window.clearTimeout(id);
+  }, []);
+
+  useEffect(() => {
+    if (!activeWorkspaceFile) {
+      startTransition(() => {
+        setPdfData(null);
+        setPdfFetchError(null);
+        setPdfFetching(false);
+      });
       loadingFileIdRef.current = null;
       return;
     }
 
     // Fast path — buffer already in memory (just uploaded this session)
-    const local = getFileBuffer(activeFile.id);
+    const local = getFileBuffer(activeWorkspaceFile.id);
     if (local) {
-      setPdfData(local);
-      setPdfFetchError(null);
-      setPdfFetching(false);
+      startTransition(() => {
+        setPdfData(local);
+        setPdfFetchError(null);
+        setPdfFetching(false);
+      });
       return;
     }
 
     if (!user) {
-      setPdfData(null);
-      setPdfFetchError("Not authenticated.");
-      setPdfFetching(false);
+      startTransition(() => {
+        setPdfData(null);
+        setPdfFetchError("Not authenticated.");
+        setPdfFetching(false);
+      });
       return;
     }
 
     // Avoid duplicate downloads for the same file
-    if (loadingFileIdRef.current === activeFile.id) return;
-    loadingFileIdRef.current = activeFile.id;
-    setPdfData(null);
-    setPdfFetchError(null);
-    setPdfFetching(true);
+    if (loadingFileIdRef.current === activeWorkspaceFile.id) return;
+    loadingFileIdRef.current = activeWorkspaceFile.id;
+    startTransition(() => {
+      setPdfData(null);
+      setPdfFetchError(null);
+      setPdfFetching(true);
+    });
 
-    downloadPdfAsBuffer(user.uid, activeFile.id)
+    downloadPdfAsBuffer(user.uid, activeWorkspaceFile.id)
       .then((buf) => {
-        addFileBuffer(activeFile.id, buf);
-        if (loadingFileIdRef.current === activeFile.id) {
+        addFileBuffer(activeWorkspaceFile.id, buf);
+        if (loadingFileIdRef.current === activeWorkspaceFile.id) {
           setPdfData(buf);
           setPdfFetching(false);
         }
       })
       .catch((err) => {
         console.error("[WorkspacePage] Failed to download PDF from Storage:", err);
-        if (loadingFileIdRef.current === activeFile.id) {
+        if (loadingFileIdRef.current === activeWorkspaceFile.id) {
           loadingFileIdRef.current = null;
           setPdfFetching(false);
           setPdfFetchError("Failed to load PDF from cloud storage. Please try re-uploading the file.");
         }
       });
-  }, [activeFile, user]);
+  }, [activeWorkspaceFile, user]);
+
+  const workspacePreparing =
+    initializing || filesLoading || stampsLoading || !workspaceDelayDone;
+
+  if (workspaceView === "dashboard") {
+    return <Dashboard />;
+  }
 
   return (
     <div className="relative flex h-full">
@@ -144,6 +180,16 @@ export default function WorkspacePage() {
       <section className="flex min-w-0 flex-1 flex-col">
         {/* Toolbar strip */}
         <div className="flex h-10 shrink-0 items-center gap-1 border-b bg-muted/30 px-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setWorkspaceView("dashboard")}
+            title="Back to dashboard"
+          >
+            <LayoutDashboard className="h-4 w-4" />
+          </Button>
+
           <Button
             variant="ghost"
             size="icon"
@@ -178,9 +224,9 @@ export default function WorkspacePage() {
         {/* Canvas area */}
         <div className={cn(
           "flex flex-1 overflow-auto bg-muted/10",
-          activeFile ? "flex-col" : "items-center justify-center",
+          activeWorkspaceFile ? "flex-col" : "items-center justify-center",
         )}>
-          {activeFile ? (
+          {activeWorkspaceFile ? (
             pdfFetchError ? (
               <div className="flex flex-1 items-center justify-center">
                 <p className="text-sm text-destructive">{pdfFetchError}</p>
@@ -188,6 +234,13 @@ export default function WorkspacePage() {
             ) : (
               <PdfCanvas pdfData={pdfData} fetching={pdfFetching} />
             )
+          ) : workspacePreparing ? (
+            <div className="flex flex-col items-center gap-3 text-center">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                Loading workspace...
+              </p>
+            </div>
           ) : (
             <>
               <div className="flex flex-col items-center gap-3 text-center">
